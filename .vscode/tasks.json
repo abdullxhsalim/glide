@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install All Dependencies",
+      "type": "shell",
+      "command": "npm run install-all",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Application",
+      "type": "shell",
+      "command": "npm start",
+      "group": "test",
+      "problemMatcher": [],
+      "dependsOn": "Install All Dependencies"
+    }
+  ]
+}
