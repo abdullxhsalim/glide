@@ -30,6 +30,10 @@ const Home = () => {
               The exclusive carpool network for the University students community. Hop in on the way, save money, and reduce campus traffic.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
+              <a href="/dash" className="px-8 py-4 bg-[#10B981] hover:bg-[#059669] text-white rounded-xl font-bold text-lg shadow-xl shadow-[#10B981]/25 hover:shadow-[#10B981]/40 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
+                Try it Now
+                <Zap className="w-5 h-5" />
+              </a>
               <button className="px-8 py-4 bg-[#4F46E5] hover:bg-[#4338CA] text-white rounded-xl font-bold text-lg shadow-xl shadow-[#4F46E5]/25 hover:shadow-[#4F46E5]/40 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
                 Sign Up as a Rider
                 <ArrowRight className="w-5 h-5" />
