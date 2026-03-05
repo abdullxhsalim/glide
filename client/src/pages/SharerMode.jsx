@@ -3,7 +3,7 @@ import { Shield, MapPin, Clock } from 'lucide-react';
 
 const SharerMode = () => {
   return (
-    <div className="pt-32 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-screen relative z-10">
+    <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-screen relative z-10">
       <div className="text-center space-y-6 mb-16">
         <h1 className="text-4xl lg:text-6xl font-extrabold tracking-tight">
           List Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#4F46E5] to-[#10B981]">Ride</span>

@@ -7,9 +7,9 @@ const Dashboard = () => {
   const [activeMode, setActiveMode] = useState('hopper');
 
   return (
-    <div className="min-h-screen bg-[#1E293B] text-[#F8FAFC]">
+    <div className="min-h-screen bg-[#1E293B] text-[#F8FAFC] pt-28">
       {/* Toggle Controls */}
-      <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50">
+      <div className="flex justify-center mb-8 relative z-50">
         <div className="bg-[#334155]/80 backdrop-blur-md p-1.5 rounded-full border border-gray-700 shadow-xl flex items-center w-72 relative transition-all duration-300">
           
           <div 
