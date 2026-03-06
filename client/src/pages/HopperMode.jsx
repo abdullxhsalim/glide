@@ -10,6 +10,7 @@ const HopperMode = () => {
     { id: 1, driver: 'Md. Rahim', rating: 4.8, from: 'Banani', to: 'Gulshan', time: '10:30 AM', price: '৳45', seats: 2 },
     { id: 2, driver: 'Sadia Rahman', rating: 4.9, from: 'Dhanmondi', to: 'Motijheel', time: '11:15 AM', price: '৳30', seats: 1 },
     { id: 3, driver: 'Arif Hossain', rating: 4.7, from: 'Uttara', to: 'Mirpur', time: '12:00 PM', price: '৳50', seats: 3 },
+    { id: 4, driver: 'Nusrat Jahan', rating: 4.9, from: 'Mohakhali', to: 'Badda', time: '1:45 PM', price: '৳40', seats: 2 },  
   ];
 
   return (
