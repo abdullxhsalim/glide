@@ -3,11 +3,13 @@ import { Search, MapPin, Clock, User, Star } from 'lucide-react';
 
 const HopperMode = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [partnerLocation, setPartnerLocation] = useState('');
+  const [requestSent, setRequestSent] = useState(false);
 
   const availableRides = [
-    { id: 1, driver: 'Alex M.', rating: 4.8, from: 'North Campus', to: 'Downtown', time: '10:30 AM', price: '৳45', seats: 2 },
-    { id: 2, driver: 'Sarah K.', rating: 4.9, from: 'Engineering Bldg', to: 'Library', time: '11:15 AM', price: '৳30', seats: 1 },
-    { id: 3, driver: 'David J.', rating: 4.7, from: 'Main Gate', to: 'Subway Station', time: '12:00 PM', price: '৳50', seats: 3 },
+    { id: 1, driver: 'Md. Rahim', rating: 4.8, from: 'Banani', to: 'Gulshan', time: '10:30 AM', price: '৳45', seats: 2 },
+    { id: 2, driver: 'Sadia Rahman', rating: 4.9, from: 'Dhanmondi', to: 'Motijheel', time: '11:15 AM', price: '৳30', seats: 1 },
+    { id: 3, driver: 'Arif Hossain', rating: 4.7, from: 'Uttara', to: 'Mirpur', time: '12:00 PM', price: '৳50', seats: 3 },
   ];
 
   return (
@@ -36,15 +38,52 @@ const HopperMode = () => {
           />
         </div>
 
+        {/* Find Partner Section */}
+        <div className="mb-12 p-6 sm:p-8 bg-[#334155]/30 rounded-2xl border border-[#334155] flex flex-col sm:flex-row items-center justify-between text-center sm:text-left gap-6">
+          <div className="flex-1">
+            <h3 className="text-xl font-bold mb-2 text-white">Can't find any suitable rides?</h3>
+            <p className="text-gray-400 mb-4 sm:mb-0">Connect with others heading the same way and share a ride.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-4 items-center w-full sm:w-auto">
+            <select
+              className="bg-[#1E293B] border border-[#334155] rounded-xl py-3 px-4 text-white focus:outline-none focus:border-[#10B981] w-full sm:w-48"
+              value={partnerLocation}
+              onChange={(e) => {
+                setPartnerLocation(e.target.value);
+                setRequestSent(false);
+              }}
+            >
+              <option value="">Select Location</option>
+              {['Banani', 'Gulshan', 'Dhanmondi', 'Motijheel', 'Uttara', 'Mirpur', 'Mohakhali', 'Badda'].map(loc => (
+                <option key={loc} value={loc}>{loc}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (partnerLocation) setRequestSent(true);
+              }}
+              disabled={requestSent || !partnerLocation}
+              className={`px-8 py-3 rounded-xl font-bold transition-all shadow-lg shrink-0 w-full sm:w-auto text-white ${requestSent
+                  ? 'bg-green-600 bg-none cursor-not-allowed border border-green-500'
+                  : partnerLocation
+                    ? 'bg-gradient-to-r from-[#10B981] to-[#4F46E5] hover:opacity-90 hover:shadow-xl'
+                    : 'bg-gray-600 cursor-not-allowed opacity-50'
+                }`}
+            >
+              {requestSent ? 'Request Sent ✓' : 'Find Partner'}
+            </button>
+          </div>
+        </div>
+
         {/* Ride List */}
         <div className="space-y-4">
           <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
             <Clock className="w-5 h-5 text-[#10B981]" /> Available Rides Now
           </h3>
-          
+
           {availableRides.map((ride) => (
             <div key={ride.id} className="bg-[#334155]/30 rounded-2xl p-6 border border-[#334155] hover:border-[#10B981]/50 transition-colors flex flex-col sm:flex-row gap-6 items-center justify-between">
-              
+
               <div className="flex-1 w-full space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
@@ -57,22 +96,22 @@ const HopperMode = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-4 text-gray-300 scale-95 origin-left">
-                     <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-gray-400"/> {ride.from}</div>
-                     <div className="w-4 h-[1px] bg-gray-500"></div>
-                     <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-[#10B981]"/> {ride.to}</div>
+                  <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-gray-400" /> {ride.from}</div>
+                  <div className="w-4 h-[1px] bg-gray-500"></div>
+                  <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-[#10B981]" /> {ride.to}</div>
                 </div>
               </div>
 
               <div className="w-full sm:w-auto flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 bg-[#1E293B] sm:bg-transparent p-4 sm:p-0 rounded-xl">
-                 <div className="text-right">
-                    <div className="text-2xl font-bold text-[#10B981]">{ride.price}</div>
-                    <div className="text-sm text-gray-400">{ride.time} • {ride.seats} seats left</div>
-                 </div>
-                 <button className="px-6 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold transition-colors">
-                    Hop In
-                 </button>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-[#10B981]">{ride.price}</div>
+                  <div className="text-sm text-gray-400">{ride.time} • {ride.seats} seats left</div>
+                </div>
+                <button className="px-6 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold transition-colors">
+                  Hop In
+                </button>
               </div>
 
             </div>
