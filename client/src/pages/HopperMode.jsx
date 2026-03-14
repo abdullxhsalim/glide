@@ -24,9 +24,9 @@ const HopperMode = () => {
   };
 
   const availableRides = [
-    { id: 1, driver: 'Rahim U.', rating: 4.8, from: 'Banani', to: 'Gulshan 2', time: '10:30 AM', price: '৳45', seats: 2 },
-    { id: 2, driver: 'Sadia M.', rating: 4.9, from: 'Dhanmondi 27', to: 'Farmgate', time: '11:15 AM', price: '৳30', seats: 1 },
-    { id: 3, driver: 'Kamrul H.', rating: 4.7, from: 'Mirpur 10', to: 'Mohakhali', time: '12:00 PM', price: '৳50', seats: 3 },
+    { id: 1, driver: 'Rahim U.', rating: 4.8, from: 'Banani', to: 'NSU', time: '10:30 AM', price: '৳45', seats: 2 },
+    { id: 2, driver: 'Sadia M.', rating: 4.9, from: 'NSU', to: 'Farmgate', time: '11:15 AM', price: '৳30', seats: 1 },
+    { id: 3, driver: 'Kamrul H.', rating: 4.7, from: 'Mirpur 10', to: 'NSU', time: '12:00 PM', price: '৳50', seats: 3 },
   ];
 
   return (
