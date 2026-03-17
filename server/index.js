@@ -14,12 +14,15 @@ app.get('/', (req, res) => {
   res.send('Glide API is running');
 });
 
-// Connect to MongoDB (placeholder connection string)
+// Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/glide';
 
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1); // Exit process with failure
+  });
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
