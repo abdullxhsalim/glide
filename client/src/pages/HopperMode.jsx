@@ -1,11 +1,52 @@
-import React, { useState } from 'react';
-import { Search, MapPin, Clock, User, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, MapPin, Clock, User, Star, Loader } from 'lucide-react';
 
 const HopperMode = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showPartnerForm, setShowPartnerForm] = useState(false);
   const [partnerLocation, setPartnerLocation] = useState('');
   const [requestSent, setRequestSent] = useState(false);
+  const [rides, setRides] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchRides = async () => {
+      try {
+        const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+        const token = userInfo?.token;
+
+        if (!token) {
+           setError('Please login to view rides');
+           setLoading(false);
+           return;
+        }
+
+        const res = await fetch('/api/rides', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to fetch rides');
+        }
+
+        const data = await res.json();
+        setRides(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRides();
+  }, []);
+
+  const formatTime = (dateString) => {
+    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   const partnerLocations = [
     'Banani', 'Gulshan 1', 'Gulshan 2', 'Dhanmondi',
@@ -22,12 +63,6 @@ const HopperMode = () => {
       }, 3000); // Reset form after 3 seconds
     }
   };
-
-  const availableRides = [
-    { id: 1, driver: 'Rahim U.', rating: 4.8, from: 'Banani', to: 'NSU', time: '10:30 AM', price: '৳45', seats: 2 },
-    { id: 2, driver: 'Sadia M.', rating: 4.9, from: 'NSU', to: 'Farmgate', time: '11:15 AM', price: '৳30', seats: 1 },
-    { id: 3, driver: 'Kamrul H.', rating: 4.7, from: 'Mirpur 10', to: 'NSU', time: '12:00 PM', price: '৳50', seats: 3 },
-  ];
 
   return (
     <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex-1 flex flex-col w-full relative z-10">
@@ -99,47 +134,65 @@ const HopperMode = () => {
         </div>
 
         {/* Ride List */}
-        <div className="space-y-4 mb-4">
-          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-[#10B981]" /> Available Rides Now
-          </h3>
+        {loading ? (
+             <div className="flex justify-center py-12">
+                 <Loader className="w-8 h-8 text-[#10B981] animate-spin" />
+             </div>
+        ) : error ? (
+            <div className="text-center text-red-400 py-8 bg-red-500/10 rounded-xl border border-red-500/30">
+                {error}
+            </div>
+        ) : rides.length > 0 ? (
+          <div className="space-y-4 mb-4">
+            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-[#10B981]" /> Available Rides Now
+            </h3>
 
-          {availableRides.map((ride) => (
-            <div key={ride.id} className="bg-[#334155]/30 rounded-2xl p-6 border border-[#334155] hover:border-[#10B981]/50 transition-colors flex flex-col sm:flex-row gap-6 items-center justify-between">
+            {rides.map((ride) => {
+              const seatsLeft = ride.seatsTotal - (ride.seatsBooked || 0);
+              
+              return (
+              <div key={ride._id} className="bg-[#334155]/30 rounded-2xl p-6 border border-[#334155] hover:border-[#10B981]/50 transition-colors flex flex-col sm:flex-row gap-6 items-center justify-between">
 
-              <div className="flex-1 w-full space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
-                    <User className="w-6 h-6 text-gray-300" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-lg">{ride.driver}</div>
-                    <div className="flex items-center text-sm text-yellow-500">
-                      <Star className="w-4 h-4 fill-current mr-1" /> {ride.rating}
+                <div className="flex-1 w-full space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
+                      <User className="w-6 h-6 text-gray-300" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-lg">{ride.driver?.name || 'Unknown Driver'}</div>
+                      <div className="flex items-center text-sm text-yellow-500">
+                        <Star className="w-4 h-4 fill-current mr-1" /> {ride.driver?.rating?.toFixed(1) || 'New'}
+                      </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-4 text-gray-300 scale-95 origin-left">
+                    <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-gray-400" /> {ride.origin?.address || 'Origin'}</div>
+                    <div className="w-4 h-[1px] bg-gray-500"></div>
+                    <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-[#10B981]" /> {ride.destination?.address || 'Destination'}</div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-4 text-gray-300 scale-95 origin-left">
-                  <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-gray-400" /> {ride.from}</div>
-                  <div className="w-4 h-[1px] bg-gray-500"></div>
-                  <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-[#10B981]" /> {ride.to}</div>
+                <div className="w-full sm:w-auto flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 bg-[#1E293B] sm:bg-transparent p-4 sm:p-0 rounded-xl">
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-[#10B981]">৳{ride.pricePerSeat}</div>
+                    <div className="text-sm text-gray-400">{formatTime(ride.departureTime)} • {seatsLeft} seats left</div>
+                  </div>
+                  <button className="px-6 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold transition-colors">
+                    Hop In
+                  </button>
                 </div>
+
               </div>
+            )})}
+          </div>
+        ) : (
+             <div className="text-center py-12 text-gray-500 bg-[#334155]/20 rounded-2xl border border-[#334155]/50 border-dashed">
+                 No rides available immediately. Try finding a partner above!
+             </div>
+        )}
 
-              <div className="w-full sm:w-auto flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 bg-[#1E293B] sm:bg-transparent p-4 sm:p-0 rounded-xl">
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-[#10B981]">{ride.price}</div>
-                  <div className="text-sm text-gray-400">{ride.time} • {ride.seats} seats left</div>
-                </div>
-                <button className="px-6 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold transition-colors">
-                  Hop In
-                </button>
-              </div>
-
-            </div>
-          ))}
-        </div>
 
       </div>
     </div>

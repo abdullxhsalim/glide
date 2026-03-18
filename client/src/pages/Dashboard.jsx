@@ -5,9 +5,30 @@ import { Share2, Car } from 'lucide-react';
 
 const Dashboard = () => {
   const [activeMode, setActiveMode] = useState('hopper');
+  const user = JSON.parse(localStorage.getItem('userInfo'));
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#1E293B] text-[#F8FAFC] pt-28">
+      
+      {/* Welcome & Time Display (Local Time) */}
+      <div className="text-center mb-6 px-4">
+          <h1 className="text-2xl font-bold">
+            {getGreeting()}, <span className="text-[#10B981]">{user?.name || 'Traveler'}</span>
+          </h1>
+          <p className="text-sm text-gray-400 mt-1 flex items-center justify-center gap-2">
+            <span>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+            <span className="w-1 h-1 bg-gray-500 rounded-full"></span>
+            <span>{new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+          </p>
+      </div>
+
       {/* Toggle Controls */}
       <div className="flex justify-center mb-8 relative z-50">
         <div className="bg-[#334155]/80 backdrop-blur-md p-1.5 rounded-full border border-gray-700 shadow-xl flex items-center w-72 relative transition-all duration-300">
