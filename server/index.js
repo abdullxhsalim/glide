@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -14,8 +15,12 @@ app.get('/', (req, res) => {
   res.send('Glide API is running');
 });
 
+app.use('/api/users', require('./routes/userRoutes'));
+
 // Connect to MongoDB
+// Use environment variable MONGODB_URI or default to local instance
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/glide';
+console.log('Using MongoDB URI:', MONGODB_URI);
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB connected successfully'))

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { TrendingUp, Shield, Zap, CheckCircle, MapPin, Clock, Users, ArrowRight, Car, Lock } from 'lucide-react';
 
 const Home = () => {
@@ -30,14 +31,14 @@ const Home = () => {
               The exclusive carpool network for the University students community. Hop in on the way, save money, and reduce campus traffic.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
-              <button className="px-8 py-4 bg-[#4F46E5] hover:bg-[#4338CA] text-white rounded-xl font-bold text-lg shadow-xl shadow-[#4F46E5]/25 hover:shadow-[#4F46E5]/40 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
+              <Link to="/signup" className="px-8 py-4 bg-[#4F46E5] hover:bg-[#4338CA] text-white rounded-xl font-bold text-lg shadow-xl shadow-[#4F46E5]/25 hover:shadow-[#4F46E5]/40 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2">
                 Sign Up as a Rider
                 <ArrowRight className="w-5 h-5" />
-              </button>
-              <button className="px-8 py-4 border-2 border-[#334155] hover:border-[#4F46E5] text-[#F8FAFC] rounded-xl font-bold text-lg hover:bg-[#334155]/30 transition-all flex items-center justify-center gap-2">
+              </Link>
+              <Link to="/signup" className="px-8 py-4 border-2 border-[#334155] hover:border-[#4F46E5] text-[#F8FAFC] rounded-xl font-bold text-lg hover:bg-[#334155]/30 transition-all flex items-center justify-center gap-2">
                 <Car className="w-5 h-5" />
                 Drive & Earn
-              </button>
+              </Link>
             </div>
           </div>
 
