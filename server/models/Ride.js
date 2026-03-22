@@ -27,7 +27,14 @@ const rideSchema = new mongoose.Schema({
   seatsTotal: { type: Number, required: true, min: 1 },
   seatsBooked: { type: Number, default: 0 },
   
-  pricePerSeat: { type: Number, required: true }, // In Taka
+  totalFuelCost: { type: Number, required: true }, // The total cost to be split
+  pricePerSeat: { type: Number }, // Snapshot or initial estimate (optional now)
+  
+  routeData: {
+    distanceKm: { type: Number },
+    durationMin: { type: Number },
+    geometry: { type: String } // Encoded polyline or similar for mapping
+  },
 
   preferences: {
     smoking: { type: Boolean, default: false },

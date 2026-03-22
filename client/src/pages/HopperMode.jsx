@@ -176,7 +176,7 @@ const HopperMode = () => {
 
                 <div className="w-full sm:w-auto flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 bg-[#1E293B] sm:bg-transparent p-4 sm:p-0 rounded-xl">
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-[#10B981]">৳{ride.pricePerSeat}</div>
+                    <div className="text-2xl font-bold text-[#10B981]">Est. ৳{ride.pricePerSeat}</div>
                     <div className="text-sm text-gray-400">{formatTime(ride.departureTime)} • {seatsLeft} seats left</div>
                   </div>
                   <button className="px-6 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold transition-colors">

@@ -17,6 +17,8 @@ app.get('/', (req, res) => {
 
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/rides', require('./routes/rideRoutes'));
+app.use('/api/maps', require('./routes/mapRoutes'));
+
 
 // Connect to MongoDB
 // Use environment variable MONGODB_URI or default to local instance

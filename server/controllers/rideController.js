@@ -26,12 +26,19 @@ const getRides = async (req, res) => {
 const createRide = async (req, res) => {
     // For now, we are just focusing on fetching, but skeleton for creation is good
     try {
-        const { origin, destination, departureTime, seatsTotal, pricePerSeat, vehicle } = req.body;
+        const { origin, destination, departureTime, seatsTotal, totalFuelCost, vehicle, preferences, routeData } = req.body;
 
         // Basic validation
-        if (!origin || !destination || !departureTime || !seatsTotal || !pricePerSeat) {
+        if (!origin || !destination || !departureTime || !seatsTotal || !totalFuelCost) {
             return res.status(400).json({ message: 'Please fill in all required fields' });
         }
+
+        // Calculate initial price per seat (assuming full capacity + driver)
+        // Or leave it undefined until booked? Let's verify the user's intent.
+        // User said: "price is basically the fuel cost divided by the number of people who is in the ride"
+        // At creation, only the driver is in the ride. So cost is technically 100% driver.
+        // But for sorting/display, we might want the *optimal* price.
+        // Let's store totalFuelCost primarily.
 
         const ride = await Ride.create({
             driver: req.user.id, // Assumes auth middleware adds user to req
@@ -39,7 +46,11 @@ const createRide = async (req, res) => {
             destination,
             departureTime,
             seatsTotal,
-            pricePerSeat,
+            totalFuelCost,
+            routeData: routeData || {},
+            // Calculate a baseline price for sorting/display purposes (e.g. if car is full)
+            pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)), 
+            preferences: preferences || {},
             vehicle: vehicle || req.user.vehicle // Use user's vehicle if not specified
         });
 
