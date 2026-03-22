@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight, ShieldCheck, CheckCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
     const navigate = useNavigate();
+    const { login } = useAuth();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -36,7 +38,7 @@ const Login = () => {
             }
 
             // Save user data
-            localStorage.setItem('userInfo', JSON.stringify(data));
+            login(data);
             
             // Navigate to Dashboard
             navigate('/dash');

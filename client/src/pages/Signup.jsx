@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { User, Mail, Lock, Key, Car, Hash, ArrowRight, ArrowLeft, CheckCircle, ShieldCheck, MapPin } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 // External Progress Bar Component to prevent re-renders
 const ProgressBar = ({ step, totalSteps }) => (
@@ -29,6 +30,7 @@ const ProgressBar = ({ step, totalSteps }) => (
 
 const Signup = () => {
     const navigate = useNavigate();
+    const { login } = useAuth();
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         name: '',
@@ -144,7 +146,7 @@ const Signup = () => {
             }
 
             // Save user data and navigate
-            localStorage.setItem('userInfo', JSON.stringify(data));
+            login(data);
             navigate('/dash');
         } catch (err) {
             setError(err.message || 'Failed to sign up');
