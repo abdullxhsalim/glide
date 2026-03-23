@@ -1,14 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Clock, User, Star, Loader } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, MapPin, Clock, User, Star, Loader, ArrowRight, Calendar } from 'lucide-react';
+import { useJsApiLoader } from '@react-google-maps/api';
+import RouteMap from '../components/RouteMap';
+import GoogleLocationInput from '../components/GoogleLocationInput';
+import { getRouteDetails } from '../utils/rideCalculator';
+
+const LIBRARIES = ['places', 'geometry'];
 
 const HopperMode = () => {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    libraries: LIBRARIES
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [showPartnerForm, setShowPartnerForm] = useState(false);
   const [partnerLocation, setPartnerLocation] = useState('');
-  const [requestSent, setRequestSent] = useState(false);
   const [rides, setRides] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Initial load for rides
+  const [calculating, setCalculating] = useState(false); // Route calculation
   const [error, setError] = useState(null);
+
+  // New location states
+  const [originLocation, setOriginLocation] = useState(null);
+  const [destLocation, setDestLocation] = useState(null);
+  const [rideMetrics, setRideMetrics] = useState({
+    distanceKm: 0,
+    durationMin: 0,
+    routeGeometry: null
+  });
 
   useEffect(() => {
     const fetchRides = async () => {
@@ -48,152 +68,226 @@ const HopperMode = () => {
     return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const partnerLocations = [
-    'Banani', 'Gulshan 1', 'Gulshan 2', 'Dhanmondi',
-    'Farmgate', 'Mirpur 10', 'Mohakhali', 'Uttara', 'Bashundhara'
-  ];
-
-  const handleSendRequest = () => {
-    if (partnerLocation) {
-      setRequestSent(true);
-      setTimeout(() => {
-        setRequestSent(false);
-        setShowPartnerForm(false);
-        setPartnerLocation('');
-      }, 3000); // Reset form after 3 seconds
-    }
+  const handlePlaceSelected = (field, placeData) => {
+      if (field === 'origin') setOriginLocation(placeData);
+      if (field === 'destination') setDestLocation(placeData);
   };
 
+  const calculateRoute = useCallback(async () => {
+    if (!originLocation || !destLocation) return;
+    
+    setCalculating(true);
+    try {
+      const originCoords = [originLocation.lng, originLocation.lat];
+      const destCoords = [destLocation.lng, destLocation.lat];
+
+      const routeData = await getRouteDetails(originCoords, destCoords);
+      
+      if (routeData) {
+        setRideMetrics({
+            distanceKm: (routeData.distanceMeter / 1000).toFixed(1),
+            durationMin: Math.round(routeData.durationSeconds / 60),
+            routeGeometry: routeData.geometry
+        });
+      }
+    } catch (err) {
+      console.error("Route calculation error", err);
+    } finally {
+      setCalculating(false);
+    }
+  }, [originLocation, destLocation]);
+
+  useEffect(() => {
+    if (originLocation && destLocation) {
+        calculateRoute();
+    }
+  }, [originLocation, destLocation, calculateRoute]);
+
+
+  if (!isLoaded) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><Loader className="animate-spin text-white" /></div>;
+
   return (
-    <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex-1 flex flex-col w-full relative z-10">
+    <div className="pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-screen relative z-10 text-[#F8FAFC]">
       <div className="text-center space-y-6 mb-12">
         <h1 className="text-4xl lg:text-6xl font-extrabold tracking-tight">
-          Find a <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10B981] to-[#4F46E5]">Ride</span>
+          Find a <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#4F46E5] to-[#10B981]">Ride</span>
         </h1>
         <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-          Search for available rides heading your way and hop in.
+          Search for available rides, join a carpool, and travel comfortably.
         </p>
       </div>
 
-      <div className="max-w-3xl mx-auto w-full flex-grow flex flex-col">
-        {/* Search Bar */}
-        <div className="relative mb-8">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <Search className="h-6 w-6 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            className="block w-full w-full bg-[#334155]/50 border-2 border-[#334155] rounded-2xl py-4 pl-14 pr-4 text-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] transition-all shadow-lg"
-            placeholder="Where do you want to go?"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* Left Column: Search & Map Panel (Styled like Sharer Mode) */}
+        <div className="lg:col-span-5 space-y-6">
+            <div className="bg-[#334155]/20 backdrop-blur-sm p-6 rounded-3xl border border-[#334155] shadow-2xl relative">
+                <h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">
+                    <MapPin className="text-[#4F46E5]" /> 
+                    Plan Journey
+                </h2>
+                
+                <div className="space-y-5">
+                    <div className="space-y-4">
+                        <GoogleLocationInput
+                            label="Pickup Location"
+                            isLoaded={isLoaded}
+                            onPlaceSelected={(place) => handlePlaceSelected('origin', place)}
+                            placeholder="Enter pickup location"
+                            icon={MapPin}
+                        />
+                        
+                        <div className="flex justify-center -my-2 relative z-10">
+                            <div className="bg-[#1E293B] p-2 rounded-full border border-[#334155] text-gray-400">
+                                <ArrowRight className="w-4 h-4 rotate-90" />
+                            </div>
+                        </div>
+
+                        <GoogleLocationInput
+                            label="Dropoff Location"
+                            isLoaded={isLoaded}
+                            onPlaceSelected={(place) => handlePlaceSelected('destination', place)}
+                            placeholder="Enter destination"
+                            icon={MapPin}
+                        />
+                    </div>
+
+                    {rideMetrics.distanceKm > 0 && (
+                        <div className="p-4 bg-[#1E293B]/80 rounded-xl border border-[#334155] flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+                            <div>
+                                <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Distance</p>
+                                <p className="text-lg font-bold text-white">{rideMetrics.distanceKm} km</p>
+                            </div>
+                            <div className="h-8 w-px bg-[#334155]"></div>
+                            <div>
+                                <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Est. Time</p>
+                                <p className="text-lg font-bold text-white">{rideMetrics.durationMin} min</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="h-64 w-full rounded-2xl overflow-hidden border border-[#334155] shadow-inner relative mt-4">
+                        <RouteMap 
+                            isLoaded={isLoaded}
+                            origin={originLocation ? [originLocation.lng, originLocation.lat] : null}
+                            destination={destLocation ? [destLocation.lng, destLocation.lat] : null}
+                            geometry={rideMetrics.routeGeometry}
+                        />
+                        {calculating && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center backdrop-blur-sm z-10">
+                                <div className="flex flex-col items-center gap-2">
+                                    <Loader className="w-8 h-8 text-[#4F46E5] animate-spin" />
+                                    <span className="text-sm font-medium text-white">Calculating...</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <button className="w-full py-4 bg-gradient-to-r from-[#4F46E5] to-[#4338ca] hover:from-[#4338ca] hover:to-[#3730a3] text-white font-bold rounded-xl transition-all shadow-lg shadow-[#4F46E5]/25 flex items-center justify-center gap-2 text-lg">
+                        <Search className="w-5 h-5" />
+                        Search Rides
+                    </button>
+                </div>
+            </div>
         </div>
 
-        {/* Can't find a ride */}
-        <div className="mb-8 bg-gradient-to-r from-[#334155]/60 to-[#1E293B]/60 p-8 rounded-3xl border border-gray-700/50 text-center flex flex-col items-center">
-          <h3 className="text-2xl font-bold mb-3">Can't find any suitable rides?</h3>
-          <p className="text-gray-400 mb-6 max-w-md">
-            Don't worry! You can find a partner going to the same destination and split the ride together.
-          </p>
+        {/* Right Column: Results List */}
+        <div className="lg:col-span-7 space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+                    Available Rides
+                    <span className="bg-[#334155] text-white px-3 py-1 rounded-full text-xs">{rides.length}</span>
+                </h2>
+                <div className="flex gap-2">
+                    {/* Filter buttons could go here */}
+                </div>
+            </div>
 
-          {requestSent ? (
-            <div className="text-[#10B981] font-bold text-xl py-3 flex items-center gap-2 animate-pulse">
-              <div className="w-8 h-8 rounded-full bg-[#10B981]/20 flex items-center justify-center">✓</div>
-              Request Sent Successfully!
-            </div>
-          ) : showPartnerForm ? (
-            <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <select
-                value={partnerLocation}
-                onChange={(e) => setPartnerLocation(e.target.value)}
-                className="flex-1 bg-[#1E293B] border border-[#4F46E5]/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none"
-                style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em' }}
-              >
-                <option value="" disabled>Select destination</option>
-                {partnerLocations.map(loc => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleSendRequest}
-                disabled={!partnerLocation}
-                className="px-6 py-3 bg-[#10B981] hover:bg-[#059669] disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-all"
-              >
-                Send Request
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowPartnerForm(true)}
-              className="px-8 py-3 bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] hover:from-[#4338CA] hover:to-[#6D28D9] text-white rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all transform hover:-translate-y-0.5 w-full sm:w-auto"
-            >
-              Find Partner
-            </button>
-          )}
+            {loading ? (
+                <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                    <Loader className="w-10 h-10 text-[#4F46E5] animate-spin" />
+                    <p className="text-gray-400">Loading available rides...</p>
+                </div>
+            ) : error ? (
+                <div className="p-6 bg-red-500/10 border border-red-500/20 text-red-200 rounded-2xl flex items-center justify-center">
+                    {error}
+                </div>
+            ) : rides.length === 0 ? (
+                <div className="text-center py-20 bg-[#334155]/20 rounded-3xl border border-[#334155] border-dashed">
+                    <div className="w-16 h-16 bg-[#334155] rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Search className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">No rides found</h3>
+                    <p className="text-gray-400">Try adjusting your search criteria or check back later.</p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {rides.map(ride => (
+                        <div key={ride._id} className="bg-[#334155]/20 backdrop-blur-sm p-6 rounded-2xl border border-[#334155] hover:border-[#4F46E5]/50 hover:bg-[#334155]/30 transition-all cursor-pointer group">
+                            <div className="flex flex-col md:flex-row justify-between gap-6">
+                                <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#4F46E5] to-[#10B981] flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 ring-[#1E293B]">
+                                                {ride.host?.name?.charAt(0) || <User className="w-6 h-6" />}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-lg text-white group-hover:text-[#4F46E5] transition-colors">{ride.host?.name || 'Verified Driver'}</h3>
+                                                <div className="flex items-center gap-1.5 text-xs text-yellow-400 font-medium">
+                                                    <Star className="w-3.5 h-3.5 fill-current" />
+                                                    <span>4.9</span>
+                                                    <span className="text-gray-500">• 12 trips</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right md:hidden">
+                                            <p className="text-2xl font-bold text-[#10B981]">৳{Math.round(ride.totalFuelCost / (ride.seatsTotal + 1))}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="relative pl-6 space-y-6 border-l-2 border-[#334155] ml-2.5 my-4">
+                                        <div className="relative">
+                                            <div className="absolute -left-[21px] top-1.5 w-3 h-3 rounded-full bg-[#4F46E5] ring-4 ring-[#1E293B]"></div>
+                                            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Pickup</p>
+                                            <p className="text-white font-medium text-base truncate pr-4">{ride.origin?.address || 'Unknown Origin'}</p>
+                                        </div>
+
+                                        <div className="relative">
+                                            <div className="absolute -left-[21px] top-1.5 w-3 h-3 rounded-full bg-[#10B981] ring-4 ring-[#1E293B]"></div>
+                                            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Dropoff</p>
+                                            <p className="text-white font-medium text-base truncate pr-4">{ride.destination?.address || 'Unknown Destination'}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-4 pt-2">
+                                        <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1E293B] border border-[#334155] text-sm text-gray-300">
+                                            <Calendar className="w-4 h-4 text-[#4F46E5]" />
+                                            {new Date(ride.departureTime).toLocaleDateString()}
+                                        </span>
+                                        <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1E293B] border border-[#334155] text-sm text-gray-300">
+                                            <Clock className="w-4 h-4 text-[#10B981]" />
+                                            {formatTime(ride.departureTime)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col justify-between items-end border-t md:border-t-0 md:border-l border-[#334155] pt-4 md:pt-0 md:pl-6">
+                                    <div className="hidden md:block text-right">
+                                        <p className="text-4xl font-bold text-[#10B981]">৳{Math.round(ride.totalFuelCost / (ride.seatsTotal + 1))}</p>
+                                        <p className="text-xs text-gray-400 font-medium mt-1">per seat</p>
+                                    </div>
+                                    
+                                    <button className="w-full md:w-auto mt-4 px-6 py-3 bg-[#334155] hover:bg-[#4F46E5] text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-[#4F46E5]/25">
+                                        Book Seat
+                                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
-
-        {/* Ride List */}
-        {loading ? (
-             <div className="flex justify-center py-12">
-                 <Loader className="w-8 h-8 text-[#10B981] animate-spin" />
-             </div>
-        ) : error ? (
-            <div className="text-center text-red-400 py-8 bg-red-500/10 rounded-xl border border-red-500/30">
-                {error}
-            </div>
-        ) : rides.length > 0 ? (
-          <div className="space-y-4 mb-4">
-            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-[#10B981]" /> Available Rides Now
-            </h3>
-
-            {rides.map((ride) => {
-              const seatsLeft = ride.seatsTotal - (ride.seatsBooked || 0);
-              
-              return (
-              <div key={ride._id} className="bg-[#334155]/30 rounded-2xl p-6 border border-[#334155] hover:border-[#10B981]/50 transition-colors flex flex-col sm:flex-row gap-6 items-center justify-between">
-
-                <div className="flex-1 w-full space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
-                      <User className="w-6 h-6 text-gray-300" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-lg">{ride.driver?.name || 'Unknown Driver'}</div>
-                      <div className="flex items-center text-sm text-yellow-500">
-                        <Star className="w-4 h-4 fill-current mr-1" /> {ride.driver?.rating?.toFixed(1) || 'New'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-gray-300 scale-95 origin-left">
-                    <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-gray-400" /> {ride.origin?.address || 'Origin'}</div>
-                    <div className="w-4 h-[1px] bg-gray-500"></div>
-                    <div className="flex items-center gap-1"><MapPin className="w-4 h-4 text-[#10B981]" /> {ride.destination?.address || 'Destination'}</div>
-                  </div>
-                </div>
-
-                <div className="w-full sm:w-auto flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 bg-[#1E293B] sm:bg-transparent p-4 sm:p-0 rounded-xl">
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-[#10B981]">Est. ৳{ride.pricePerSeat}</div>
-                    <div className="text-sm text-gray-400">{formatTime(ride.departureTime)} • {seatsLeft} seats left</div>
-                  </div>
-                  <button className="px-6 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-bold transition-colors">
-                    Hop In
-                  </button>
-                </div>
-
-              </div>
-            )})}
-          </div>
-        ) : (
-             <div className="text-center py-12 text-gray-500 bg-[#334155]/20 rounded-2xl border border-[#334155]/50 border-dashed">
-                 No rides available immediately. Try finding a partner above!
-             </div>
-        )}
-
-
       </div>
     </div>
   );
