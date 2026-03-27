@@ -21,11 +21,8 @@ const getRoute = async (req, res) => {
     const o = formatCoord(origin);
     const d = formatCoord(destination);
 
-    // mode=driving is default, but specifying it ensures road distance
     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${o}&destination=${d}&mode=driving&key=${process.env.GOOGLE_MAPS_API_KEY}`;
     
-    // Add Referer header to attempt to satisfy API key restrictions
-    // If this fails, the API key needs 'IP addresses' restriction or 'None' in Google Cloud Console
     const response = await fetch(url, {
         headers: {
             'Referer': 'http://localhost:5173/' 
@@ -50,7 +47,6 @@ const getRoute = async (req, res) => {
 
   } catch (error) {
     console.error('Map Controller Error:', error.message);
-    // Don't expose internal error details to client unless debugging
     res.status(500).json({ message: 'Failed to calculate route' });
   }
 };

@@ -35,6 +35,12 @@ const rideSchema = new mongoose.Schema({
     durationMin: { type: Number },
     geometry: { type: String } // Encoded polyline or similar for mapping
   },
+  
+  // Decoded path for geospatial queries (Is Near Route?)
+  path: {
+     type: { type: String, default: 'LineString' },
+     coordinates: { type: [[Number]], required: false } // Array of [lng, lat]
+  },
 
   preferences: {
     smoking: { type: Boolean, default: false },
@@ -57,8 +63,10 @@ const rideSchema = new mongoose.Schema({
     type: String,
     enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
   }]
-
 }, { timestamps: true });
+
+// Index for Geospatial queries
+rideSchema.index({ 'path': '2dsphere' });
 
 // Index for Geospatial queries
 rideSchema.index({ 'origin.coordinates': '2dsphere' });
