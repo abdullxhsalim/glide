@@ -26,6 +26,9 @@ const HopperMode = () => {
   const [destLocation, setDestLocation] = useState(null);
   const [originInput, setOriginInput] = useState('');
   const [destInput, setDestInput] = useState('');
+  const [pickupFilterText, setPickupFilterText] = useState('');
+  const [dropoffFilterText, setDropoffFilterText] = useState('');
+  const [showRideListOnly, setShowRideListOnly] = useState(false);
   
   const [date, setDate] = useState(() => {
     const d = new Date();
@@ -58,38 +61,37 @@ const HopperMode = () => {
       }
 
       let url = '/api/rides';
-      
-      // Add search params if available
+      const queryParams = {};
+
+      // Optional map-based filtering
       if (searchParams.origin && searchParams.destination) {
-          const queryParams = {
-              pickupLat: searchParams.origin.lat,
-              pickupLng: searchParams.origin.lng,
-              dropoffLat: searchParams.destination.lat,
-              dropoffLng: searchParams.destination.lng
-          };
+        queryParams.pickupLat = searchParams.origin.lat;
+        queryParams.pickupLng = searchParams.origin.lng;
+        queryParams.dropoffLat = searchParams.destination.lat;
+        queryParams.dropoffLng = searchParams.destination.lng;
+      }
 
-          if (searchParams.date) {
-              const [y, m, d] = searchParams.date.split('-').map(Number);
-              // Construct local dates safely
-              const startD = new Date(y, m - 1, d, 0, 0, 0);
-              const endD = new Date(y, m - 1, d, 23, 59, 59, 999);
+      // Active rides from selected date/time (inclusive)
+      if (searchParams.date) {
+        const [y, m, d] = searchParams.date.split('-').map(Number);
+        const startD = new Date(y, m - 1, d, 0, 0, 0, 0);
 
-              if (searchParams.time) {
-                  const [hm, amph] = searchParams.time.split(' ');
-                  if (hm && amph) {
-                      let [h, min] = hm.split(':').map(Number);
-                      if (amph === 'PM' && h !== 12) h += 12;
-                      if (amph === 'AM' && h === 12) h = 0;
-                      startD.setHours(h, min, 0, 0);
-                  }
-              }
-              
-              queryParams.minDepartureTime = startD.toISOString();
-              queryParams.maxDepartureTime = endD.toISOString();
+        if (searchParams.time) {
+          const [hm, amph] = searchParams.time.split(' ');
+          if (hm && amph) {
+            let [h, min] = hm.split(':').map(Number);
+            if (amph === 'PM' && h !== 12) h += 12;
+            if (amph === 'AM' && h === 12) h = 0;
+            startD.setHours(h, min, 0, 0);
           }
+        }
 
-          const params = new URLSearchParams(queryParams);
-          url += `?${params.toString()}`;
+        queryParams.minDepartureTime = startD.toISOString();
+      }
+
+      const params = new URLSearchParams(queryParams);
+      if ([...params.keys()].length > 0) {
+        url += `?${params.toString()}`;
       }
 
       const res = await fetch(url, {
@@ -201,6 +203,19 @@ const HopperMode = () => {
       fetchRides({ origin: originLocation, destination: destLocation, date, time });
   };
 
+  const handleFindActiveRides = () => {
+    if (!date) {
+      setError('Please select a date first');
+      return;
+    }
+    setShowRideListOnly(true);
+    fetchRides({ date, time });
+  };
+
+  const handleShowMap = () => {
+    setShowRideListOnly(false);
+  };
+
   const formatTime = (dateString) => {
     return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -235,6 +250,18 @@ const HopperMode = () => {
     }
   }, [originLocation, destLocation, calculateRoute]);
 
+  const filteredRides = rides.filter((ride) => {
+    const ridePickup = (ride.origin?.address || '').toLowerCase();
+    const rideDropoff = (ride.destination?.address || '').toLowerCase();
+    const pickupText = pickupFilterText.trim().toLowerCase();
+    const dropoffText = dropoffFilterText.trim().toLowerCase();
+
+    const pickupMatches = !pickupText || ridePickup.includes(pickupText);
+    const dropoffMatches = !dropoffText || rideDropoff.includes(dropoffText);
+
+    return pickupMatches && dropoffMatches;
+  });
+
   if (!isLoaded) return <div className="min-h-screen bg-[#0F172A] flex items-center justify-center"><Loader className="animate-spin text-white" /></div>;
 
   return (
@@ -254,6 +281,27 @@ const HopperMode = () => {
         <div className="max-w-2xl mx-auto bg-[#334155]/30 backdrop-blur-xl rounded-3xl p-8 border border-[#334155] shadow-2xl relative overflow-hidden transition-all duration-300">
             
             <div className="space-y-6">
+                <button
+                  onClick={handleFindActiveRides}
+                  disabled={loading || calculating || !date}
+                  className="w-full py-4 bg-gradient-to-r from-[#4F46E5] to-[#10B981] hover:from-[#4338ca] hover:to-[#059669] text-white font-bold rounded-xl transition-all shadow-lg shadow-[#4F46E5]/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                >
+                  {loading ? <Loader className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  See All Active Rides
+                </button>
+
+                {showRideListOnly && (
+                  <button
+                    onClick={handleShowMap}
+                    className="w-full py-3 bg-[#1E293B] border border-[#334155] hover:border-[#4F46E5] text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+                  >
+                    <MapPin className="w-5 h-5" />
+                    Show Map
+                  </button>
+                )}
+
+                {!showRideListOnly && (
+                  <>
                 {/* Inputs */}
                 <div className="grid grid-cols-1 gap-5">
                     <div className="flex gap-2 items-end">
@@ -370,6 +418,8 @@ const HopperMode = () => {
                     {loading ? <Loader className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6 group-hover:scale-110 transition-transform" />}
                     {loading ? 'Searching Rides...' : 'Find Available Rides'}
                 </button>
+                  </>
+                )}
 
                  {error && (
                     <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-200 text-sm rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
@@ -382,17 +432,42 @@ const HopperMode = () => {
 
         {/* Results Section */}
         <div className="max-w-2xl mx-auto mt-12 space-y-6">
-            {hasSearched && rides.length === 0 && !loading && !error && (
+          {hasSearched && rides.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Filter Pickup by Text</label>
+                <input
+                  type="text"
+                  value={pickupFilterText}
+                  onChange={(e) => setPickupFilterText(e.target.value)}
+                  placeholder="e.g., Dhanmondi"
+                  className="w-full h-[48px] bg-[#1E293B] border border-[#334155] rounded-xl px-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Filter Dropoff by Text</label>
+                <input
+                  type="text"
+                  value={dropoffFilterText}
+                  onChange={(e) => setDropoffFilterText(e.target.value)}
+                  placeholder="e.g., Gulshan"
+                  className="w-full h-[48px] bg-[#1E293B] border border-[#334155] rounded-xl px-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                />
+              </div>
+            </div>
+          )}
+
+          {hasSearched && filteredRides.length === 0 && !loading && !error && (
                 <div className="text-center py-12 bg-[#1E293B]/50 rounded-3xl border border-[#334155] border-dashed">
                     <div className="bg-[#334155]/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Search className="w-8 h-8 text-gray-400" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">No Rides Found</h3>
-                    <p className="text-gray-400">Try changing your search criteria or date.</p>
+              <h3 className="text-xl font-bold text-white mb-2">No Rides Found</h3>
+              <p className="text-gray-400">Try changing your date, map search, or text filters.</p>
                 </div>
             )}
 
-            {rides.map((ride) => (
+          {filteredRides.map((ride) => (
                 <div key={ride._id} className="bg-[#1E293B] rounded-2xl p-6 border border-[#334155] hover:border-[#4F46E5] transition-all group animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex justify-between items-start mb-6">
                         <div className="flex items-center gap-4">
