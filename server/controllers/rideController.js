@@ -89,6 +89,11 @@ const getRides = async (req, res) => {
       .populate('driver', 'name rating vehicle')
       .sort({ departureTime: 1 });
 
+    console.log('DEBUG: Fetched rides from DB:');
+    rides.forEach((ride, idx) => {
+      console.log(`  Ride ${idx}: origin.placeName=${ride.origin?.placeName}, origin.address=${ride.origin?.address}`);
+    });
+
     let filteredRides = rides;
 
     if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
@@ -141,6 +146,12 @@ const createRide = async (req, res) => {
     try {
         const { origin, destination, departureTime, seatsTotal, totalFuelCost, vehicle, preferences, routeData } = req.body;
 
+        console.log('DEBUG: Creating ride with:');
+        console.log('  Origin placeName:', origin?.placeName);
+        console.log('  Origin address:', origin?.address);
+        console.log('  Destination placeName:', destination?.placeName);
+        console.log('  Destination address:', destination?.address);
+
         if (!origin || !destination || !departureTime || !seatsTotal || !totalFuelCost) {
             return res.status(400).json({ message: 'Please fill in all required fields' });
         }
@@ -167,6 +178,13 @@ const createRide = async (req, res) => {
             pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)), 
             preferences: preferences || {},
             vehicle: vehicle || req.user.vehicle // Use user's vehicle if not specified
+        });
+
+        console.log('DEBUG: Ride created:', {
+          originPlaceName: ride.origin?.placeName,
+          originAddress: ride.origin?.address,
+          destPlaceName: ride.destination?.placeName,
+          destAddress: ride.destination?.address
         });
 
         res.status(201).json(ride);

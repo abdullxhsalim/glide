@@ -6,12 +6,14 @@ const rideSchema = new mongoose.Schema({
   origin: {
     type: { type: String, default: 'Point' },
     coordinates: { type: [Number], required: true }, // [longitude, latitude]
+    placeName: { type: String },
     address: { type: String, required: true } // Human readable address
   },
   
   destination: {
     type: { type: String, default: 'Point' },
     coordinates: { type: [Number], required: true }, // [longitude, latitude]
+    placeName: { type: String },
     address: { type: String, required: true } // Human readable address
   },
   

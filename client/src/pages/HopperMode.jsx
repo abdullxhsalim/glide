@@ -251,8 +251,8 @@ const HopperMode = () => {
   }, [originLocation, destLocation, calculateRoute]);
 
   const filteredRides = rides.filter((ride) => {
-    const ridePickup = (ride.origin?.address || '').toLowerCase();
-    const rideDropoff = (ride.destination?.address || '').toLowerCase();
+    const ridePickup = `${ride.origin?.placeName || ''} ${ride.origin?.address || ''}`.toLowerCase();
+    const rideDropoff = `${ride.destination?.placeName || ''} ${ride.destination?.address || ''}`.toLowerCase();
     const pickupText = pickupFilterText.trim().toLowerCase();
     const dropoffText = dropoffFilterText.trim().toLowerCase();
 
@@ -495,13 +495,19 @@ const HopperMode = () => {
                         <div className="relative">
                              <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[#4F46E5] border-2 border-[#1E293B]"></div>
                              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Pickup</p>
-                             <p className="text-white text-sm line-clamp-1">{ride.origin.address}</p>
+                             <p className="text-white text-sm font-semibold line-clamp-1">{ride.origin?.placeName || ride.origin?.address}</p>
+                             {ride.origin?.placeName && ride.origin?.address && ride.origin.placeName !== ride.origin.address && (
+                               <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{ride.origin.address}</p>
+                             )}
                              <p className="text-xs text-gray-500 mt-1">{formatTime(ride.departureTime)}</p>
                         </div>
                          <div className="relative">
                              <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[#10B981] border-2 border-[#1E293B]"></div>
                              <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Dropoff</p>
-                             <p className="text-white text-sm line-clamp-1">{ride.destination.address}</p>
+                             <p className="text-white text-sm font-semibold line-clamp-1">{ride.destination?.placeName || ride.destination?.address}</p>
+                             {ride.destination?.placeName && ride.destination?.address && ride.destination.placeName !== ride.destination.address && (
+                               <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{ride.destination.address}</p>
+                             )}
                         </div>
                     </div>
 

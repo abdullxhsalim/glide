@@ -44,9 +44,16 @@ const SharerMode = () => {
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState('');
   
-  // Keep track of full location objects { address, lat, lng }
+  // Keep track of full location objects { name, address, lat, lng }
   const [originLocation, setOriginLocation] = useState(null);
   const [destLocation, setDestLocation] = useState(null);
+
+  const getGeocoderName = (result) => {
+    if (!result) return '';
+    const poi = result.address_components?.find((c) => c.types?.includes('point_of_interest'))?.long_name;
+    const locality = result.address_components?.find((c) => c.types?.includes('locality'))?.long_name;
+    return poi || locality || '';
+  };
 
   const [formData, setFormData] = useState({
     origin: '',
@@ -81,13 +88,14 @@ const SharerMode = () => {
              geocoder.geocode({ location: { lat, lng } }, (results, status) => {
                 if (status === "OK" && results[0]) {
                     const address = results[0].formatted_address;
-                    setFormData(prev => ({ ...prev, origin: address }));
-                    setOriginLocation({ address, lat, lng });
+                  const name = getGeocoderName(results[0]) || address;
+                  setFormData(prev => ({ ...prev, origin: name }));
+                  setOriginLocation({ name, address, lat, lng });
                 } else {
                     // Fallback if address not found
                     const locStr = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
                     setFormData(prev => ({ ...prev, origin: locStr }));
-                    setOriginLocation({ address: locStr, lat, lng });
+                  setOriginLocation({ name: locStr, address: locStr, lat, lng });
                 }
              });
           }
@@ -181,7 +189,7 @@ const SharerMode = () => {
   };
 
   const handlePlaceSelected = (field, placeData) => {
-      setFormData(prev => ({ ...prev, [field]: placeData.address }));
+      setFormData(prev => ({ ...prev, [field]: placeData.name || placeData.address }));
       if (field === 'origin') setOriginLocation(placeData);
       if (field === 'destination') setDestLocation(placeData);
   };
@@ -199,14 +207,15 @@ const SharerMode = () => {
       geocoder.geocode({ location: { lat, lng } }, (results, status) => {
           if (status === "OK" && results[0]) {
               const address = results[0].formatted_address;
-              const locData = { address, lat, lng };
+              const name = getGeocoderName(results[0]) || address;
+              const locData = { name, address, lat, lng };
               
               if (!originLocation) {
                   setOriginLocation(locData);
-                  setFormData(prev => ({ ...prev, origin: address }));
+                setFormData(prev => ({ ...prev, origin: name }));
               } else {
                   setDestLocation(locData);
-                  setFormData(prev => ({ ...prev, destination: address }));
+                setFormData(prev => ({ ...prev, destination: name }));
               }
           }
       });
@@ -268,11 +277,13 @@ const SharerMode = () => {
         origin: {
           type: 'Point',
           coordinates: [originLocation.lng, originLocation.lat], // GeoJSON order
+          placeName: originLocation.name || originLocation.address,
           address: originLocation.address
         },
         destination: {
           type: 'Point',
           coordinates: [destLocation.lng, destLocation.lat],
+          placeName: destLocation.name || destLocation.address,
           address: destLocation.address
         },
         departureTime: departureTime,
@@ -289,6 +300,13 @@ const SharerMode = () => {
           ac: true
         }
       };
+
+      console.log('DEBUG: Payload to send:', {
+        originName: payload.origin.placeName,
+        originAddress: payload.origin.address,
+        destName: payload.destination.placeName,
+        destAddress: payload.destination.address
+      });
 
       const res = await fetch('/api/rides', {
         method: 'POST',
@@ -585,11 +603,17 @@ const SharerMode = () => {
                             <div className="flex-1 space-y-6">
                                 <div>
                                     <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">From</p>
-                                    <p className="text-white font-medium">{formData.origin}</p>
+                                    <p className="text-white font-medium">{originLocation?.name || formData.origin}</p>
+                                    {originLocation?.address && originLocation.name !== originLocation.address && (
+                                        <p className="text-xs text-gray-400 mt-1">{originLocation.address}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">To</p>
-                                    <p className="text-white font-medium">{formData.destination}</p>
+                                    <p className="text-white font-medium">{destLocation?.name || formData.destination}</p>
+                                    {destLocation?.address && destLocation.name !== destLocation.address && (
+                                        <p className="text-xs text-gray-400 mt-1">{destLocation.address}</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
