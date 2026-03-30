@@ -130,8 +130,61 @@ const getMe = async (req, res) => {
   }
 };
 
+// @desc    Verify vehicle and upgrade user to driver
+// @route   PUT /api/users/verify-vehicle
+// @access  Private
+const verifyVehicle = async (req, res) => {
+  try {
+    const { make, model, color, licensePlate, year } = req.body;
+
+    if (!make || !model || !color || !licensePlate) {
+      return res.status(400).json({ message: 'Vehicle make, model, color and license plate are required' });
+    }
+
+    const existingPlateOwner = await User.findOne({
+      'vehicle.licensePlate': licensePlate,
+      _id: { $ne: req.user.id }
+    });
+
+    if (existingPlateOwner) {
+      return res.status(400).json({ message: 'A vehicle with this license plate is already registered' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.vehicle = {
+      make,
+      model,
+      color,
+      licensePlate,
+      year
+    };
+    user.role = 'driver';
+    user.isVerified = true;
+
+    await user.save();
+
+    res.status(200).json({
+      _id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isVerified: user.isVerified,
+      vehicle: user.vehicle,
+      token: generateToken(user._id)
+    });
+  } catch (error) {
+    console.error('Vehicle verification error:', error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
-  getMe
+  getMe,
+  verifyVehicle
 };

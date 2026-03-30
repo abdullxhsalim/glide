@@ -3,11 +3,11 @@ const Ride = require('../models/Ride');
 
 // @desc    Hopper creates a booking request for a ride
 // @route   POST /api/bookings
-// @access  Private (rider)
+// @access  Private (rider/driver)
 const createBookingRequest = async (req, res) => {
   try {
-    if (req.user.role !== 'rider') {
-      return res.status(403).json({ message: 'Only hoppers can request a ride' });
+    if (!['rider', 'driver'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Only riders or drivers can request a ride' });
     }
 
     const { rideId, seatsBooked = 1, pickupLocation, dropoffLocation, notes } = req.body;
