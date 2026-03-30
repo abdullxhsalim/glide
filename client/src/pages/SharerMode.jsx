@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, MapPin, Clock, CheckCircle, DollarSign, Users, Calendar, Fuel, Locate, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Shield, MapPin, Clock, CheckCircle, DollarSign, Users, Calendar, Fuel, Locate, ArrowRight, ArrowLeft, Edit3, Trash2, ListChecks, PlusCircle } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import RouteMap from '../components/RouteMap';
 import GoogleLocationInput from '../components/GoogleLocationInput';
@@ -38,11 +38,26 @@ const SharerMode = () => {
 
   const [step, setStep] = useState(1);
   const totalSteps = 4;
+  const [activeSharerPanel, setActiveSharerPanel] = useState('publish');
 
   const [isPosted, setIsPosted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState('');
+  const [ridesLoading, setRidesLoading] = useState(false);
+  const [ridesError, setRidesError] = useState('');
+  const [driverRides, setDriverRides] = useState([]);
+  const [editRideId, setEditRideId] = useState('');
+  const [savingRide, setSavingRide] = useState(false);
+  const [deletingRideId, setDeletingRideId] = useState('');
+  const [editForm, setEditForm] = useState({
+    departureTime: '',
+    seatsTotal: '',
+    totalFuelCost: '',
+    status: 'scheduled',
+    multipleStoppages: false,
+    expressway: false
+  });
   
   // Keep track of full location objects { name, address, lat, lng }
   const [originLocation, setOriginLocation] = useState(null);
@@ -75,6 +90,158 @@ const SharerMode = () => {
     maxPrice: 0,
     routeGeometry: null
   });
+
+  const getToken = () => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+    return userInfo?.token || '';
+  };
+
+  const formatDateTimeLocal = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+  };
+
+  const loadMyRides = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      setRidesError('Please log in again to manage your rides.');
+      return;
+    }
+
+    setRidesLoading(true);
+    setRidesError('');
+    try {
+      const response = await fetch('/api/rides/mine', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to load your rides');
+      }
+
+      setDriverRides(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setRidesError(err.message || 'Failed to load your rides');
+    } finally {
+      setRidesLoading(false);
+    }
+  }, []);
+
+  const handleStartEdit = (ride) => {
+    setEditRideId(ride._id);
+    setEditForm({
+      departureTime: formatDateTimeLocal(ride.departureTime),
+      seatsTotal: ride.seatsTotal || '',
+      totalFuelCost: ride.totalFuelCost || '',
+      status: ride.status || 'scheduled',
+      multipleStoppages: Boolean(ride.preferences?.multipleStoppages),
+      expressway: Boolean(ride.preferences?.expressway)
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditRideId('');
+    setEditForm({
+      departureTime: '',
+      seatsTotal: '',
+      totalFuelCost: '',
+      status: 'scheduled',
+      multipleStoppages: false,
+      expressway: false
+    });
+  };
+
+  const handleUpdateRide = async (rideId) => {
+    const token = getToken();
+    if (!token) {
+      setRidesError('Please log in again to manage your rides.');
+      return;
+    }
+
+    setSavingRide(true);
+    setRidesError('');
+    try {
+      const payload = {
+        departureTime: new Date(editForm.departureTime).toISOString(),
+        seatsTotal: Number(editForm.seatsTotal),
+        totalFuelCost: Number(editForm.totalFuelCost),
+        status: editForm.status,
+        preferences: {
+          multipleStoppages: Boolean(editForm.multipleStoppages),
+          expressway: Boolean(editForm.expressway)
+        }
+      };
+
+      const response = await fetch(`/api/rides/${rideId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update ride');
+      }
+
+      setDriverRides((prev) => prev.map((ride) => (ride._id === rideId ? data : ride)));
+      handleCancelEdit();
+    } catch (err) {
+      setRidesError(err.message || 'Failed to update ride');
+    } finally {
+      setSavingRide(false);
+    }
+  };
+
+  const handleDeleteRide = async (rideId) => {
+    const token = getToken();
+    if (!token) {
+      setRidesError('Please log in again to manage your rides.');
+      return;
+    }
+
+    const shouldDelete = window.confirm('Delete this ride permanently?');
+    if (!shouldDelete) return;
+
+    setDeletingRideId(rideId);
+    setRidesError('');
+    try {
+      const response = await fetch(`/api/rides/${rideId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete ride');
+      }
+
+      setDriverRides((prev) => prev.filter((ride) => ride._id !== rideId));
+      if (editRideId === rideId) {
+        handleCancelEdit();
+      }
+    } catch (err) {
+      setRidesError(err.message || 'Failed to delete ride');
+    } finally {
+      setDeletingRideId('');
+    }
+  };
+
+  useEffect(() => {
+    if (activeSharerPanel === 'manage') {
+      loadMyRides();
+    }
+  }, [activeSharerPanel, loadMyRides]);
 
   // Handle "Use My Location"
   const handleUseMyLocation = () => {
@@ -367,65 +534,91 @@ const SharerMode = () => {
         </p>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-[#334155]/20 backdrop-blur-sm p-8 rounded-3xl border border-[#334155] shadow-2xl relative">
-        {isPosted ? (
-          <div className="text-center space-y-6 animate-in fade-in zoom-in duration-500 py-10">
-            <div className="mx-auto w-24 h-24 bg-[#10B981]/20 rounded-full flex items-center justify-center mb-6">
-              <CheckCircle className="w-12 h-12 text-[#10B981]" />
-            </div>
-            <h2 className="text-3xl font-bold text-white">Ride Created Successfully!</h2>
-            <div className="mt-8 p-6 bg-[#1E293B] rounded-2xl inline-block text-left min-w-[300px] border border-[#334155]">
-                <div className="flex justify-between items-center mb-2">
-                    <span className="text-gray-400">Total Distance</span>
-                    <span className="text-white font-bold">{rideMetrics.distanceKm} km</span>
-                </div>
-                 <div className="flex justify-between items-center mb-2">
-                    <span className="text-gray-400">Duration</span>
-                    <span className="text-white font-bold">~{rideMetrics.durationMin} mins</span>
-                </div>
-                <div className="h-px bg-[#334155] my-3"></div>
-                <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Estimated Fuel Cost</span>
-                    <span className="text-[#10B981] font-bold text-lg">৳{rideMetrics.totalCost}</span>
-                </div>
-            </div>
-            <p className="text-gray-400 text-lg mt-6">We will notify you when someone requests to join.</p>
-            <button 
-              onClick={() => {
-                setIsPosted(false);
-                setStep(1);
-                setFormData(prev => ({ ...prev, origin: '', destination: '' })); 
-                setOriginLocation(null);
-                setDestLocation(null);
-                setRideMetrics({ ...rideMetrics, totalCost: 0 });
-              }}
-              className="mt-8 px-8 py-3 bg-[#4F46E5] hover:bg-[#4338ca] text-white rounded-xl font-medium transition-all shadow-lg shadow-[#4F46E5]/20"
-            >
-              Post Another Ride
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="mb-6 flex items-center justify-between">
-                 <h2 className="text-2xl font-bold text-white">
-                    {step === 1 && "Start & Destination"}
-                    {step === 2 && "Time & Date"}
-                    {step === 3 && "Vehicle & Fuel"}
-                    {step === 4 && "Review & Confirm"}
-                 </h2>
-                 <span className="text-sm text-gray-400 font-medium">Step {step} of {totalSteps}</span>
-            </div>
-            
-            <ProgressBar step={step} totalSteps={totalSteps} />
+      <div className="max-w-3xl mx-auto mb-6">
+        <div className="bg-[#334155]/40 backdrop-blur-sm p-1 rounded-2xl border border-[#334155] grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveSharerPanel('publish')}
+            className={`h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              activeSharerPanel === 'publish' ? 'bg-[#4F46E5] text-white shadow-lg shadow-[#4F46E5]/20' : 'text-gray-300 hover:bg-[#1E293B]'
+            }`}
+          >
+            <PlusCircle className="w-4 h-4" />
+            Publish Ride
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSharerPanel('manage')}
+            className={`h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+              activeSharerPanel === 'manage' ? 'bg-[#10B981] text-white shadow-lg shadow-[#10B981]/20' : 'text-gray-300 hover:bg-[#1E293B]'
+            }`}
+          >
+            <ListChecks className="w-4 h-4" />
+            My Published Rides
+          </button>
+        </div>
+      </div>
 
-            {error && (
-              <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-200 text-sm mb-6 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-                <Shield className="w-4 h-4 flex-shrink-0" />
-                {error}
+      {activeSharerPanel === 'publish' ? (
+        <div className="max-w-3xl mx-auto bg-[#334155]/20 backdrop-blur-sm p-8 rounded-3xl border border-[#334155] shadow-2xl relative">
+          {isPosted ? (
+            <div className="text-center space-y-6 animate-in fade-in zoom-in duration-500 py-10">
+              <div className="mx-auto w-24 h-24 bg-[#10B981]/20 rounded-full flex items-center justify-center mb-6">
+                <CheckCircle className="w-12 h-12 text-[#10B981]" />
               </div>
-            )}
+              <h2 className="text-3xl font-bold text-white">Ride Created Successfully!</h2>
+              <div className="mt-8 p-6 bg-[#1E293B] rounded-2xl inline-block text-left min-w-[300px] border border-[#334155]">
+                  <div className="flex justify-between items-center mb-2">
+                      <span className="text-gray-400">Total Distance</span>
+                      <span className="text-white font-bold">{rideMetrics.distanceKm} km</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-2">
+                      <span className="text-gray-400">Duration</span>
+                      <span className="text-white font-bold">~{rideMetrics.durationMin} mins</span>
+                  </div>
+                  <div className="h-px bg-[#334155] my-3"></div>
+                  <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Estimated Fuel Cost</span>
+                      <span className="text-[#10B981] font-bold text-lg">৳{rideMetrics.totalCost}</span>
+                  </div>
+              </div>
+              <p className="text-gray-400 text-lg mt-6">We will notify you when someone requests to join.</p>
+              <button
+                onClick={() => {
+                  setIsPosted(false);
+                  setStep(1);
+                  setFormData(prev => ({ ...prev, origin: '', destination: '' }));
+                  setOriginLocation(null);
+                  setDestLocation(null);
+                  setRideMetrics({ ...rideMetrics, totalCost: 0 });
+                }}
+                className="mt-8 px-8 py-3 bg-[#4F46E5] hover:bg-[#4338ca] text-white rounded-xl font-medium transition-all shadow-lg shadow-[#4F46E5]/20"
+              >
+                Post Another Ride
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="mb-6 flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-white">
+                      {step === 1 && "Start & Destination"}
+                      {step === 2 && "Time & Date"}
+                      {step === 3 && "Vehicle & Fuel"}
+                      {step === 4 && "Review & Confirm"}
+                  </h2>
+                  <span className="text-sm text-gray-400 font-medium">Step {step} of {totalSteps}</span>
+              </div>
 
-            <form onSubmit={handleSubmit}>
+              <ProgressBar step={step} totalSteps={totalSteps} />
+
+              {error && (
+                <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-200 text-sm mb-6 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                  <Shield className="w-4 h-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit}>
               
               {/* Step 1: Route */}
               {step === 1 && (
@@ -747,10 +940,162 @@ const SharerMode = () => {
                     </button>
                 )}
               </div>
-            </form>
+              </form>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="max-w-3xl mx-auto bg-[#334155]/20 backdrop-blur-sm p-8 rounded-3xl border border-[#334155] shadow-2xl space-y-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold text-white">Manage Your Published Rides</h2>
+            <button
+              type="button"
+              onClick={loadMyRides}
+              className="px-4 py-2 rounded-lg border border-[#334155] text-sm text-gray-200 hover:bg-[#1E293B] transition-all"
+            >
+              Refresh
+            </button>
           </div>
-        )}
-      </div>
+
+          {ridesError && (
+            <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center gap-2">
+              <Shield className="w-4 h-4 flex-shrink-0" />
+              {ridesError}
+            </div>
+          )}
+
+          {ridesLoading ? (
+            <div className="text-gray-300 text-sm">Loading your rides...</div>
+          ) : driverRides.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-[#334155] rounded-2xl bg-[#1E293B]/40">
+              <p className="text-lg text-gray-300">No published rides found.</p>
+              <p className="text-sm text-gray-500 mt-1">Switch to Publish Ride to create your first ride.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {driverRides.map((ride) => (
+                <div key={ride._id} className="bg-[#1E293B] rounded-2xl border border-[#334155] p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-gray-400">{new Date(ride.departureTime).toLocaleString()}</p>
+                      <h3 className="text-base font-semibold text-white mt-1">
+                        {ride.origin?.placeName || ride.origin?.address || 'Origin'} → {ride.destination?.placeName || ride.destination?.address || 'Destination'}
+                      </h3>
+                      <p className="text-sm text-gray-400 mt-2">
+                        Seats: {ride.seatsBooked}/{ride.seatsTotal} booked • Fuel Cost: ৳{ride.totalFuelCost}
+                      </p>
+                      <p className="text-xs mt-2 inline-block px-2 py-1 rounded-md bg-[#334155] text-gray-200 uppercase tracking-wide">
+                        {ride.status}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(ride)}
+                        className="h-10 px-3 rounded-lg bg-[#4F46E5] hover:bg-[#4338ca] text-white text-sm font-medium flex items-center gap-2 transition-all"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRide(ride._id)}
+                        disabled={deletingRideId === ride._id}
+                        className="h-10 px-3 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-60"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        {deletingRideId === ride._id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {editRideId === ride._id && (
+                    <div className="border-t border-[#334155] pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Departure</label>
+                        <input
+                          type="datetime-local"
+                          value={editForm.departureTime}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, departureTime: e.target.value }))}
+                          className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Ride Status</label>
+                        <select
+                          value={editForm.status}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value }))}
+                          className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                        >
+                          <option value="scheduled">Scheduled</option>
+                          <option value="cancelled">Cancelled</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Total Seats</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editForm.seatsTotal}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, seatsTotal: e.target.value }))}
+                          className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Total Fuel Cost (BDT)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editForm.totalFuelCost}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, totalFuelCost: e.target.value }))}
+                          className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={editForm.multipleStoppages}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, multipleStoppages: e.target.checked }))}
+                          className="w-4 h-4 accent-[#4F46E5]"
+                        />
+                        Multiple Stoppages
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={editForm.expressway}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, expressway: e.target.checked }))}
+                          className="w-4 h-4 accent-[#4F46E5]"
+                        />
+                        Expressway Tolls
+                      </label>
+
+                      <div className="md:col-span-2 flex gap-3 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateRide(ride._id)}
+                          disabled={savingRide}
+                          className="h-10 px-4 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-sm font-semibold disabled:opacity-70"
+                        >
+                          {savingRide ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          className="h-10 px-4 rounded-lg border border-[#334155] text-gray-200 text-sm font-semibold hover:bg-[#334155]"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

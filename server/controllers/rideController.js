@@ -223,7 +223,89 @@ const createRide = async (req, res) => {
     }
 }
 
+// @desc    Get rides created by logged-in driver
+// @route   GET /api/rides/mine
+// @access  Private
+const getMyRides = async (req, res) => {
+    try {
+        const rides = await Ride.find({ driver: req.user.id }).sort({ departureTime: 1 });
+        res.json(rides);
+    } catch (error) {
+        console.error('Error fetching driver rides:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Update a ride created by logged-in driver
+// @route   PUT /api/rides/:id
+// @access  Private
+const updateMyRide = async (req, res) => {
+    try {
+        const ride = await Ride.findById(req.params.id);
+
+        if (!ride) {
+            return res.status(404).json({ message: 'Ride not found' });
+        }
+
+        if (ride.driver.toString() !== req.user.id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to update this ride' });
+        }
+
+        const allowedFields = ['departureTime', 'seatsTotal', 'totalFuelCost', 'preferences', 'status'];
+
+        allowedFields.forEach((field) => {
+            if (req.body[field] !== undefined) {
+                if (field === 'preferences') {
+                    ride.preferences = { ...(ride.preferences || {}), ...req.body.preferences };
+                } else {
+                    ride[field] = req.body[field];
+                }
+            }
+        });
+
+        if (ride.seatsTotal < ride.seatsBooked) {
+            return res.status(400).json({ message: 'Seats total cannot be less than already booked seats' });
+        }
+
+        if (ride.seatsTotal > 0 && ride.totalFuelCost > 0) {
+            ride.pricePerSeat = Math.floor(ride.totalFuelCost / (parseInt(ride.seatsTotal, 10) + 1));
+        }
+
+        const updatedRide = await ride.save();
+        res.json(updatedRide);
+    } catch (error) {
+        console.error('Error updating ride:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Delete a ride created by logged-in driver
+// @route   DELETE /api/rides/:id
+// @access  Private
+const deleteMyRide = async (req, res) => {
+    try {
+        const ride = await Ride.findById(req.params.id);
+
+        if (!ride) {
+            return res.status(404).json({ message: 'Ride not found' });
+        }
+
+        if (ride.driver.toString() !== req.user.id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to delete this ride' });
+        }
+
+        await ride.deleteOne();
+        res.json({ message: 'Ride deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting ride:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 module.exports = {
   getRides,
-  createRide
+    createRide,
+    getMyRides,
+    updateMyRide,
+    deleteMyRide
 };
