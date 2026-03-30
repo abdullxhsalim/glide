@@ -91,10 +91,27 @@ const getRides = async (req, res) => {
 
     console.log('DEBUG: Fetched rides from DB:');
     rides.forEach((ride, idx) => {
-      console.log(`  Ride ${idx}: origin.placeName=${ride.origin?.placeName}, origin.address=${ride.origin?.address}`);
+      console.log(`  Ride ${idx}: origin.placeName=${ride.origin?.placeName}, preferences=${JSON.stringify(ride.preferences)}`);
     });
 
-    let filteredRides = rides;
+    // Ensure all rides have complete preferences object with defaults for existing rides
+    const defaultPreferences = {
+        smoking: false,
+        music: true,
+        ac: true,
+        quietPayload: false,
+        pets: false,
+        expressway: false,
+        multipleStoppages: false
+    };
+
+    const ridesWithPreferences = rides.map(ride => {
+        const rideObj = ride.toObject ? ride.toObject() : ride;
+        rideObj.preferences = { ...defaultPreferences, ...(ride.preferences || {}) };
+        return rideObj;
+    });
+
+    let filteredRides = ridesWithPreferences;
 
     if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
        const pLat = parseFloat(pickupLat);
@@ -105,7 +122,7 @@ const getRides = async (req, res) => {
 
        console.log(`Filtering rides for Pickup: ${pLat}, ${pLng} | Dropoff: ${dLat}, ${dLng}`);
 
-       filteredRides = rides.filter(ride => {
+       filteredRides = ridesWithPreferences.filter(ride => {
            if (!ride.path || !ride.path.coordinates || ride.path.coordinates.length < 2) {
                console.log(`Ride ${ride._id} skipped: No path data`);
                return false;
@@ -165,6 +182,18 @@ const createRide = async (req, res) => {
             }
         }
 
+        // Merge incoming preferences with defaults to ensure all fields are present
+        const defaultPreferences = {
+            smoking: false,
+            music: true,
+            ac: true,
+            quietPayload: false,
+            pets: false,
+            expressway: false,
+            multipleStoppages: false
+        };
+        const mergedPreferences = { ...defaultPreferences, ...(preferences || {}) };
+
         const ride = await Ride.create({
             driver: req.user.id, // Assumes auth middleware adds user to req
             origin,
@@ -176,7 +205,7 @@ const createRide = async (req, res) => {
             path: routePath.coordinates.length > 0 ? routePath : undefined, // Save GeoJSON path for spatial queries
             // Calculate a baseline price for sorting/display purposes (e.g. if car is full)
             pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)), 
-            preferences: preferences || {},
+            preferences: mergedPreferences,
             vehicle: vehicle || req.user.vehicle // Use user's vehicle if not specified
         });
 

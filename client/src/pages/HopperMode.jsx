@@ -105,6 +105,11 @@ const HopperMode = () => {
       }
 
       const data = await res.json();
+      console.log('DEBUG: Fetched rides with preferences:', data.map((r, i) => ({
+        id: r._id,
+        driver: r.driver?.name,
+        preferences: r.preferences
+      })));
       setRides(data);
     } catch (err) {
       setError(err.message);
@@ -512,15 +517,25 @@ const HopperMode = () => {
                     </div>
 
                     <div className="flex items-center justify-between pt-4 border-t border-[#334155]">
-                         <div className="flex items-center gap-4 text-sm text-gray-400">
+                         <div className="flex items-center gap-2 text-sm text-gray-400 flex-wrap">
                             <div className="flex items-center gap-1.5 bg-[#334155]/30 px-2 py-1 rounded-lg">
                                 <Clock className="w-3.5 h-3.5" />
                                 <span>{ride.routeData?.durationMin || 45} min</span>
                             </div>
                              <div className="flex items-center gap-1.5 bg-[#334155]/30 px-2 py-1 rounded-lg">
                                 <User className="w-3.5 h-3.5" />
-                                <span>{ride.seatsTotal - (ride.seatsBooked || 0)} seats left</span>
+                                <span>{ride.seatsTotal - (ride.seatsBooked || 0)} seats</span>
                             </div>
+                            {ride.preferences?.multipleStoppages === true && (
+                              <div className="flex items-center gap-1.5 bg-[#10B981]/20 px-2 py-1 rounded-lg text-[#10B981] text-xs font-medium">
+                                <span>✓ Stoppages</span>
+                              </div>
+                            )}
+                            {ride.preferences?.expressway === true && (
+                              <div className="flex items-center gap-1.5 bg-[#F59E0B]/20 px-2 py-1 rounded-lg text-[#F59E0B] text-xs font-medium">
+                                <span>✓ Expressway</span>
+                              </div>
+                            )}
                          </div>
                          <button className="bg-[#4F46E5]/10 text-[#4F46E5] hover:bg-[#4F46E5] hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
                             Book Ride <ArrowRight className="w-4 h-4" />

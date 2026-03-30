@@ -63,6 +63,8 @@ const SharerMode = () => {
     seatsTotal: '3', // Default 3 passengers
     mileage: '12', // km/L default
     fuelType: 'octane', // Default fuel type
+    multipleStoppages: false,
+    expressway: false,
   });
 
   const [rideMetrics, setRideMetrics] = useState({
@@ -297,7 +299,11 @@ const SharerMode = () => {
         preferences: {
           smoking: false,
           music: true,
-          ac: true
+          ac: true,
+          quietPayload: false,
+          pets: false,
+          expressway: formData.expressway,
+          multipleStoppages: formData.multipleStoppages
         }
       };
 
@@ -523,6 +529,39 @@ const SharerMode = () => {
                       </div>
                     </div>
                   </div>
+
+                  <div className="border-t border-[#334155] pt-6">
+                    <h3 className="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wide">Journey Preferences</h3>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 p-3 bg-[#1E293B]/50 border border-[#334155] rounded-lg hover:bg-[#1E293B] hover:border-[#4F46E5] cursor-pointer transition-all group">
+                        <input
+                          type="checkbox"
+                          name="multipleStoppages"
+                          checked={formData.multipleStoppages}
+                          onChange={(e) => setFormData({ ...formData, multipleStoppages: e.target.checked })}
+                          className="w-5 h-5 rounded cursor-pointer accent-[#4F46E5]"
+                        />
+                        <div className="flex-1">
+                          <p className="text-white font-medium group-hover:text-[#4F46E5] transition-colors">Multiple Stoppages</p>
+                          <p className="text-xs text-gray-500">I'm willing to make stops along the way</p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-3 p-3 bg-[#1E293B]/50 border border-[#334155] rounded-lg hover:bg-[#1E293B] hover:border-[#4F46E5] cursor-pointer transition-all group">
+                        <input
+                          type="checkbox"
+                          name="expressway"
+                          checked={formData.expressway}
+                          onChange={(e) => setFormData({ ...formData, expressway: e.target.checked })}
+                          className="w-5 h-5 rounded cursor-pointer accent-[#4F46E5]"
+                        />
+                        <div className="flex-1">
+                          <p className="text-white font-medium group-hover:text-[#4F46E5] transition-colors">Expressway Tolls</p>
+                          <p className="text-xs text-gray-500">I plan to use expressway routes (toll charges apply)</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -641,6 +680,34 @@ const SharerMode = () => {
                             <p className="text-gray-400">Estimated Cost Per Person (if full)</p>
                             <p className="text-white font-medium">~ ৳{rideMetrics.minPrice}</p>
                          </div>
+                    </div>
+
+                    <div className="border-t border-[#334155] pt-6">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wide">Journey Preferences</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className={`p-3 rounded-lg border ${formData.multipleStoppages ? 'bg-[#4F46E5]/10 border-[#4F46E5]' : 'bg-[#1E293B]/50 border-[#334155]'}`}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-5 h-5 rounded border ${formData.multipleStoppages ? 'bg-[#4F46E5] border-[#4F46E5]' : 'border-[#334155]'}`}>
+                              {formData.multipleStoppages && <span className="text-white text-xs font-bold">✓</span>}
+                            </div>
+                            <div>
+                              <p className={`text-sm font-medium ${formData.multipleStoppages ? 'text-[#4F46E5]' : 'text-gray-400'}`}>Multiple Stoppages</p>
+                              <p className="text-xs text-gray-500">{formData.multipleStoppages ? 'Yes' : 'No'}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className={`p-3 rounded-lg border ${formData.expressway ? 'bg-[#4F46E5]/10 border-[#4F46E5]' : 'bg-[#1E293B]/50 border-[#334155]'}`}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-5 h-5 rounded border ${formData.expressway ? 'bg-[#4F46E5] border-[#4F46E5]' : 'border-[#334155]'}`}>
+                              {formData.expressway && <span className="text-white text-xs font-bold">✓</span>}
+                            </div>
+                            <div>
+                              <p className={`text-sm font-medium ${formData.expressway ? 'text-[#4F46E5]' : 'text-gray-400'}`}>Expressway Tolls</p>
+                              <p className="text-xs text-gray-500">{formData.expressway ? 'Yes' : 'No'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                 </div>
               )}

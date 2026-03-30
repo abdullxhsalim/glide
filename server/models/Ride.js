@@ -50,7 +50,8 @@ const rideSchema = new mongoose.Schema({
     ac: { type: Boolean, default: true },
     quietPayload: { type: Boolean, default: false }, // "Quiet mode"
     pets: { type: Boolean, default: false },
-    expressway: { type: Boolean, default: false } // "Toggle tolls on"
+    expressway: { type: Boolean, default: false }, // "Expressway Tolls"
+    multipleStoppages: { type: Boolean, default: false } // "Multiple Stoppages"
   },
   
   vehicle: {
