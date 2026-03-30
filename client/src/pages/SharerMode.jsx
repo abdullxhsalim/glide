@@ -984,6 +984,26 @@ const SharerMode = () => {
                       <p className="text-sm text-gray-400 mt-2">
                         Seats: {ride.seatsBooked}/{ride.seatsTotal} booked • Fuel Cost: ৳{ride.totalFuelCost}
                       </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span
+                          className={`text-xs px-2.5 py-1 rounded-full border ${
+                            ride.preferences?.multipleStoppages
+                              ? 'bg-[#4F46E5]/15 border-[#4F46E5]/40 text-[#C7D2FE]'
+                              : 'bg-[#0F172A] border-[#334155] text-gray-400'
+                          }`}
+                        >
+                          Multiple Stoppages: {ride.preferences?.multipleStoppages ? 'Yes' : 'No'}
+                        </span>
+                        <span
+                          className={`text-xs px-2.5 py-1 rounded-full border ${
+                            ride.preferences?.expressway
+                              ? 'bg-[#10B981]/15 border-[#10B981]/40 text-[#A7F3D0]'
+                              : 'bg-[#0F172A] border-[#334155] text-gray-400'
+                          }`}
+                        >
+                          Expressway: {ride.preferences?.expressway ? 'Yes' : 'No'}
+                        </span>
+                      </div>
                       <p className="text-xs mt-2 inline-block px-2 py-1 rounded-md bg-[#334155] text-gray-200 uppercase tracking-wide">
                         {ride.status}
                       </p>
@@ -992,7 +1012,7 @@ const SharerMode = () => {
                       <button
                         type="button"
                         onClick={() => handleStartEdit(ride)}
-                        className="h-10 px-3 rounded-lg bg-[#4F46E5] hover:bg-[#4338ca] text-white text-sm font-medium flex items-center gap-2 transition-all"
+                        className="h-10 px-3 rounded-lg bg-[#4F46E5]/90 hover:bg-[#4F46E5] border border-[#6366F1] text-white text-sm font-medium flex items-center gap-2 transition-all shadow-md shadow-[#4F46E5]/20"
                       >
                         <Edit3 className="w-4 h-4" />
                         Edit
@@ -1001,7 +1021,7 @@ const SharerMode = () => {
                         type="button"
                         onClick={() => handleDeleteRide(ride._id)}
                         disabled={deletingRideId === ride._id}
-                        className="h-10 px-3 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-60"
+                        className="h-10 px-3 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#475569] hover:border-[#F59E0B] text-[#F8FAFC] hover:text-[#FBBF24] text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-60"
                       >
                         <Trash2 className="w-4 h-4" />
                         {deletingRideId === ride._id ? 'Deleting...' : 'Delete'}
