@@ -21,6 +21,9 @@ const HopperMode = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [calculating, setCalculating] = useState(false); // Route calculation
   const [error, setError] = useState(null);
+  const [bookingRideId, setBookingRideId] = useState('');
+  const [bookingError, setBookingError] = useState('');
+  const [bookingSuccess, setBookingSuccess] = useState('');
 
   const [originLocation, setOriginLocation] = useState(null);
   const [destLocation, setDestLocation] = useState(null);
@@ -221,8 +224,70 @@ const HopperMode = () => {
     setShowRideListOnly(false);
   };
 
+  const handleBookRide = async (ride) => {
+    setBookingError('');
+    setBookingSuccess('');
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setBookingError('Please login to book a ride.');
+        return;
+      }
+
+      setBookingRideId(ride._id);
+
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          rideId: ride._id,
+          seatsBooked: 1
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to book ride');
+      }
+
+      setBookingSuccess('Ride request sent. Waiting for sharer approval.');
+      setRides((prev) =>
+        prev.map((item) =>
+          item._id === ride._id
+            ? {
+                ...item,
+                hasRequested: true
+              }
+            : item
+        )
+      );
+    } catch (err) {
+      setBookingError(err.message || 'Failed to book ride');
+    } finally {
+      setBookingRideId('');
+    }
+  };
+
   const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(dateString).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString([], {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
   };
 
   const calculateRoute = useCallback(async () => {
@@ -437,6 +502,18 @@ const HopperMode = () => {
 
         {/* Results Section */}
         <div className="max-w-2xl mx-auto mt-12 space-y-6">
+          {bookingSuccess && (
+            <div className="p-4 bg-[#10B981]/10 border border-[#10B981]/30 text-[#A7F3D0] text-sm rounded-xl">
+              {bookingSuccess}
+            </div>
+          )}
+
+          {bookingError && (
+            <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-200 text-sm rounded-xl">
+              {bookingError}
+            </div>
+          )}
+
           {hasSearched && rides.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -472,7 +549,13 @@ const HopperMode = () => {
                 </div>
             )}
 
-          {filteredRides.map((ride) => (
+              {filteredRides.map((ride) => {
+                const availableSeats = ride.seatsTotal - (ride.seatsBooked || 0);
+                const isBooking = bookingRideId === ride._id;
+                const alreadyRequested = ride.hasRequested === true;
+                const isFull = availableSeats <= 0;
+
+                return (
                 <div key={ride._id} className="bg-[#1E293B] rounded-2xl p-6 border border-[#334155] hover:border-[#4F46E5] transition-all group animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex justify-between items-start mb-6">
                         <div className="flex items-center gap-4">
@@ -498,13 +581,16 @@ const HopperMode = () => {
 
                     <div className="relative pl-4 space-y-6 border-l border-[#334155] ml-2 mb-6">
                         <div className="relative">
-                             <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[#4F46E5] border-2 border-[#1E293B]"></div>
-                             <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Pickup</p>
+                             <p className="text-sm font-bold text-[#C7D2FE] mb-1">{formatDate(ride.departureTime)}</p>
+                             <p className="text-xs text-gray-500 mb-2">{formatTime(ride.departureTime)}</p>
+                             <div className="relative mb-1">
+                               <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[#4F46E5] border-2 border-[#1E293B]"></div>
+                               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Pickup</p>
+                             </div>
                              <p className="text-white text-sm font-semibold line-clamp-1">{ride.origin?.placeName || ride.origin?.address}</p>
                              {ride.origin?.placeName && ride.origin?.address && ride.origin.placeName !== ride.origin.address && (
                                <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{ride.origin.address}</p>
                              )}
-                             <p className="text-xs text-gray-500 mt-1">{formatTime(ride.departureTime)}</p>
                         </div>
                          <div className="relative">
                              <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[#10B981] border-2 border-[#1E293B]"></div>
@@ -524,7 +610,7 @@ const HopperMode = () => {
                             </div>
                              <div className="flex items-center gap-1.5 bg-[#334155]/30 px-2 py-1 rounded-lg">
                                 <User className="w-3.5 h-3.5" />
-                                <span>{ride.seatsTotal - (ride.seatsBooked || 0)} seats</span>
+                                <span>{availableSeats} seats</span>
                             </div>
                             {ride.preferences?.multipleStoppages === true && (
                               <div className="flex items-center gap-1.5 bg-[#10B981]/20 px-2 py-1 rounded-lg text-[#10B981] text-xs font-medium">
@@ -537,12 +623,17 @@ const HopperMode = () => {
                               </div>
                             )}
                          </div>
-                         <button className="bg-[#4F46E5]/10 text-[#4F46E5] hover:bg-[#4F46E5] hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2">
-                            Book Ride <ArrowRight className="w-4 h-4" />
+                         <button
+                           onClick={() => handleBookRide(ride)}
+                           disabled={isBooking || alreadyRequested || isFull}
+                           className="bg-[#4F46E5]/10 text-[#4F46E5] hover:bg-[#4F46E5] hover:text-white px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                         >
+                           {isBooking ? 'Booking...' : alreadyRequested ? 'Requested' : isFull ? 'Full' : 'Book Ride'}
+                           {!isBooking && <ArrowRight className="w-4 h-4" />}
                          </button>
                     </div>
                 </div>
-            ))}
+                )})}
         </div>
     </div>
   );

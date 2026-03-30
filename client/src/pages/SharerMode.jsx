@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, MapPin, Clock, CheckCircle, DollarSign, Users, Calendar, Fuel, Locate, ArrowRight, ArrowLeft, Edit3, Trash2, ListChecks, PlusCircle } from 'lucide-react';
+import { Shield, MapPin, Clock, CheckCircle, DollarSign, Users, Calendar, Fuel, Locate, ArrowRight, ArrowLeft, Edit3, Trash2, ListChecks, PlusCircle, UserCheck, XCircle } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import RouteMap from '../components/RouteMap';
 import GoogleLocationInput from '../components/GoogleLocationInput';
@@ -50,8 +50,15 @@ const SharerMode = () => {
   const [editRideId, setEditRideId] = useState('');
   const [savingRide, setSavingRide] = useState(false);
   const [deletingRideId, setDeletingRideId] = useState('');
+  const [driverBookings, setDriverBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState('');
+  const [bookingActionId, setBookingActionId] = useState('');
   const [editForm, setEditForm] = useState({
-    departureTime: '',
+    departureDate: '',
+    departureHour: '12',
+    departureMinute: '00',
+    departurePeriod: 'AM',
     seatsTotal: '',
     totalFuelCost: '',
     status: 'scheduled',
@@ -82,6 +89,12 @@ const SharerMode = () => {
     expressway: false,
   });
 
+  const [timeParts, setTimeParts] = useState({
+    hour: '',
+    minute: '',
+    period: 'AM'
+  });
+
   const [rideMetrics, setRideMetrics] = useState({
     totalCost: 0,
     distanceKm: 0,
@@ -102,6 +115,35 @@ const SharerMode = () => {
     if (Number.isNaN(date.getTime())) return '';
     const tzOffset = date.getTimezoneOffset() * 60000;
     return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+  };
+
+  const getEditTimeParts = (value) => {
+    const localDateTime = formatDateTimeLocal(value);
+    if (!localDateTime) {
+      return {
+        departureDate: '',
+        departureHour: '12',
+        departureMinute: '00',
+        departurePeriod: 'AM'
+      };
+    }
+
+    const [datePart, timePart] = localDateTime.split('T');
+    const [hourStr = '00', minuteStr = '00'] = (timePart || '').split(':');
+
+    let hour24 = parseInt(hourStr, 10);
+    if (Number.isNaN(hour24)) hour24 = 0;
+
+    const departurePeriod = hour24 >= 12 ? 'PM' : 'AM';
+    let departureHour = hour24 % 12;
+    if (departureHour === 0) departureHour = 12;
+
+    return {
+      departureDate: datePart,
+      departureHour: String(departureHour).padStart(2, '0'),
+      departureMinute: String(parseInt(minuteStr, 10) || 0).padStart(2, '0'),
+      departurePeriod
+    };
   };
 
   const loadMyRides = useCallback(async () => {
@@ -133,10 +175,86 @@ const SharerMode = () => {
     }
   }, []);
 
+  const loadDriverBookings = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      setBookingsError('Please log in again to view ride requests.');
+      return;
+    }
+
+    setBookingsLoading(true);
+    setBookingsError('');
+    try {
+      const response = await fetch('/api/bookings/driver?status=pending', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to load booking requests');
+      }
+
+      setDriverBookings(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setBookingsError(err.message || 'Failed to load booking requests');
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, []);
+
+  const handleBookingAction = async (bookingId, action) => {
+    const token = getToken();
+    if (!token) {
+      setBookingsError('Please log in again to manage booking requests.');
+      return;
+    }
+
+    setBookingActionId(bookingId);
+    setBookingsError('');
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/respond`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ action })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || `Failed to ${action} booking request`);
+      }
+
+      setDriverBookings((prev) => prev.filter((booking) => booking._id !== bookingId));
+
+      if (action === 'accepted' && data?.ride?._id) {
+        setDriverRides((prev) =>
+          prev.map((ride) =>
+            ride._id === data.ride._id
+              ? {
+                  ...ride,
+                  seatsBooked: data.ride.seatsBooked,
+                  seatsTotal: data.ride.seatsTotal
+                }
+              : ride
+          )
+        );
+      }
+    } catch (err) {
+      setBookingsError(err.message || `Failed to ${action} booking request`);
+    } finally {
+      setBookingActionId('');
+    }
+  };
+
   const handleStartEdit = (ride) => {
+    const timeParts = getEditTimeParts(ride.departureTime);
     setEditRideId(ride._id);
     setEditForm({
-      departureTime: formatDateTimeLocal(ride.departureTime),
+      ...timeParts,
       seatsTotal: ride.seatsTotal || '',
       totalFuelCost: ride.totalFuelCost || '',
       status: ride.status || 'scheduled',
@@ -148,7 +266,10 @@ const SharerMode = () => {
   const handleCancelEdit = () => {
     setEditRideId('');
     setEditForm({
-      departureTime: '',
+      departureDate: '',
+      departureHour: '12',
+      departureMinute: '00',
+      departurePeriod: 'AM',
       seatsTotal: '',
       totalFuelCost: '',
       status: 'scheduled',
@@ -167,8 +288,28 @@ const SharerMode = () => {
     setSavingRide(true);
     setRidesError('');
     try {
+      const hourNum = Number(editForm.departureHour);
+      const minuteNum = Number(editForm.departureMinute);
+
+      if (!editForm.departureDate || Number.isNaN(hourNum) || Number.isNaN(minuteNum)) {
+        throw new Error('Please provide date and valid time');
+      }
+
+      if (hourNum < 1 || hourNum > 12 || minuteNum < 0 || minuteNum > 59) {
+        throw new Error('Time must be valid (hour 1-12, minute 0-59)');
+      }
+
+      const hour24 = (() => {
+        if (editForm.departurePeriod === 'AM') {
+          return hourNum === 12 ? 0 : hourNum;
+        }
+        return hourNum === 12 ? 12 : hourNum + 12;
+      })();
+
+      const departureTime = new Date(`${editForm.departureDate}T${String(hour24).padStart(2, '0')}:${String(minuteNum).padStart(2, '0')}:00`);
+
       const payload = {
-        departureTime: new Date(editForm.departureTime).toISOString(),
+        departureTime: departureTime.toISOString(),
         seatsTotal: Number(editForm.seatsTotal),
         totalFuelCost: Number(editForm.totalFuelCost),
         status: editForm.status,
@@ -240,8 +381,9 @@ const SharerMode = () => {
   useEffect(() => {
     if (activeSharerPanel === 'manage') {
       loadMyRides();
+      loadDriverBookings();
     }
-  }, [activeSharerPanel, loadMyRides]);
+  }, [activeSharerPanel, loadMyRides, loadDriverBookings]);
 
   // Handle "Use My Location"
   const handleUseMyLocation = () => {
@@ -355,6 +497,25 @@ const SharerMode = () => {
           if (field === 'origin') setOriginLocation(null);
           if (field === 'destination') setDestLocation(null);
       }
+  };
+
+  const syncTimeToFormData = (parts) => {
+    if (!parts.hour || parts.minute === '') {
+      setFormData((prev) => ({ ...prev, time: '' }));
+      return;
+    }
+
+    const hourNum = Math.min(12, Math.max(1, Number(parts.hour)));
+    const minuteNum = Math.min(59, Math.max(0, Number(parts.minute)));
+    const hour = String(hourNum).padStart(2, '0');
+    const minute = String(minuteNum).padStart(2, '0');
+    setFormData((prev) => ({ ...prev, time: `${hour}:${minute} ${parts.period}` }));
+  };
+
+  const handleTimePartChange = (field, value) => {
+    const next = { ...timeParts, [field]: value };
+    setTimeParts(next);
+    syncTimeToFormData(next);
   };
 
   const handlePlaceSelected = (field, placeData) => {
@@ -512,6 +673,9 @@ const SharerMode = () => {
 
   const convertTimeTo24Hour = (timeStr) => {
     if (!timeStr) return "00:00:00";
+    if (!timeStr.includes('AM') && !timeStr.includes('PM')) {
+      return `${timeStr}:00`;
+    }
     const [time, modifier] = timeStr.split(' ');
     let [hours, minutes] = time.split(':');
     if (hours === '12') {
@@ -695,31 +859,44 @@ const SharerMode = () => {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">Departure Time</label>
-                      <div className="relative">
-                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
-                        <select 
-                          name="time"
-                          value={formData.time}
-                          onChange={handleChange}
-                          required
-                          className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none transition-all"
-                        >
-                          <option value="" disabled>Select Time</option>
-                          <option>08:00 AM</option>
-                          <option>09:00 AM</option>
-                          <option>10:00 AM</option>
-                          <option>11:00 AM</option>
-                          <option>12:00 PM</option>
-                          <option>01:00 PM</option>
-                          <option>02:00 PM</option>
-                          <option>03:00 PM</option>
-                          <option>04:00 PM</option>
-                          <option>05:00 PM</option>
-                          <option>06:00 PM</option>
-                          <option>07:00 PM</option>
-                          <option>08:00 PM</option>
-                        </select>
+                      <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+                        <div className="relative">
+                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" />
+                          <input
+                            type="number"
+                            min="1"
+                            max="12"
+                            placeholder="HH"
+                            value={timeParts.hour}
+                            onChange={(e) => handleTimePartChange('hour', e.target.value)}
+                            required
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-10 pr-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                          />
+                        </div>
+                        <div>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            placeholder="MM"
+                            value={timeParts.minute}
+                            onChange={(e) => handleTimePartChange('minute', e.target.value)}
+                            required
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                          />
+                        </div>
+                        <div>
+                          <select
+                            value={timeParts.period}
+                            onChange={(e) => handleTimePartChange('period', e.target.value)}
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
                       </div>
+                      <p className="text-xs text-gray-500 mt-2">Use the up/down arrows to set hour and minute.</p>
                     </div>
                   </div>
 
@@ -825,30 +1002,36 @@ const SharerMode = () => {
               {/* Step 4: Review */}
               {step === 4 && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                    <div className="bg-[#1E293B] rounded-2xl p-6 border border-[#334155] space-y-4">
-                        <div className="flex items-start gap-4">
-                            <div className="mt-1">
-                                <div className="w-2 h-2 bg-[#4F46E5] rounded-full mb-1"></div>
-                                <div className="w-0.5 h-10 bg-gray-700 ml-[3px]"></div>
-                                <div className="w-2 h-2 bg-[#10B981] rounded-full mt-1"></div>
-                            </div>
-                            <div className="flex-1 space-y-6">
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">From</p>
-                                    <p className="text-white font-medium">{originLocation?.name || formData.origin}</p>
-                                    {originLocation?.address && originLocation.name !== originLocation.address && (
-                                        <p className="text-xs text-gray-400 mt-1">{originLocation.address}</p>
-                                    )}
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">To</p>
-                                    <p className="text-white font-medium">{destLocation?.name || formData.destination}</p>
-                                    {destLocation?.address && destLocation.name !== destLocation.address && (
-                                        <p className="text-xs text-gray-400 mt-1">{destLocation.address}</p>
-                                    )}
-                                </div>
-                            </div>
+                    <div className="bg-[#1E293B] rounded-2xl p-6 border border-[#334155]">
+                      <div className="relative grid grid-cols-[20px_1fr] gap-x-4 gap-y-8">
+                        <div className="absolute left-[10px] -translate-x-1/2 top-3 bottom-3 w-0.5 bg-gray-700"></div>
+
+                        <div className="relative z-10 flex justify-center pt-1">
+                          <div className="w-4 h-4 bg-[#1E293B] rounded-full flex items-center justify-center">
+                            <div className="w-2.5 h-2.5 bg-[#4F46E5] rounded-full"></div>
+                          </div>
                         </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">From</p>
+                          <p className="text-white font-medium">{originLocation?.name || formData.origin}</p>
+                          {originLocation?.address && originLocation.name !== originLocation.address && (
+                            <p className="text-xs text-gray-400 mt-1">{originLocation.address}</p>
+                          )}
+                        </div>
+
+                        <div className="relative z-10 flex justify-center pt-1">
+                          <div className="w-4 h-4 bg-[#1E293B] rounded-full flex items-center justify-center">
+                            <div className="w-2.5 h-2.5 bg-[#10B981] rounded-full"></div>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider font-bold">To</p>
+                          <p className="text-white font-medium">{destLocation?.name || formData.destination}</p>
+                          {destLocation?.address && destLocation.name !== destLocation.address && (
+                            <p className="text-xs text-gray-400 mt-1">{destLocation.address}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -948,13 +1131,21 @@ const SharerMode = () => {
         <div className="max-w-3xl mx-auto bg-[#334155]/20 backdrop-blur-sm p-8 rounded-3xl border border-[#334155] shadow-2xl space-y-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-bold text-white">Manage Your Published Rides</h2>
-            <button
-              type="button"
-              onClick={loadMyRides}
-              className="px-4 py-2 rounded-lg border border-[#334155] text-sm text-gray-200 hover:bg-[#1E293B] transition-all"
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-[#4F46E5]/20 text-[#C7D2FE] text-xs font-semibold border border-[#4F46E5]/30">
+                Pending Requests: {driverBookings.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  loadMyRides();
+                  loadDriverBookings();
+                }}
+                className="px-4 py-2 rounded-lg border border-[#334155] text-sm text-gray-200 hover:bg-[#1E293B] transition-all"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           {ridesError && (
@@ -963,6 +1154,68 @@ const SharerMode = () => {
               {ridesError}
             </div>
           )}
+
+          {bookingsError && (
+            <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-center gap-2">
+              <Shield className="w-4 h-4 flex-shrink-0" />
+              {bookingsError}
+            </div>
+          )}
+
+          <div className="bg-[#1E293B] rounded-2xl border border-[#334155] p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-[#10B981]" />
+              <h3 className="text-lg font-semibold text-white">Booking Requests</h3>
+            </div>
+
+            {bookingsLoading ? (
+              <p className="text-sm text-gray-400">Loading pending requests...</p>
+            ) : driverBookings.length === 0 ? (
+              <p className="text-sm text-gray-400">No pending requests right now.</p>
+            ) : (
+              <div className="space-y-3">
+                {driverBookings.map((booking) => (
+                  <div key={booking._id} className="rounded-xl border border-[#334155] bg-[#0F172A]/60 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm text-gray-300 font-semibold">{booking.rider?.name || 'Hopper'}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Seats requested: {booking.seatsBooked} • Trip fare: ৳{booking.tripPrice}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {booking.ride?.origin?.placeName || booking.ride?.origin?.address || 'Origin'} → {booking.ride?.destination?.placeName || booking.ride?.destination?.address || 'Destination'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Departure: {booking.ride?.departureTime ? new Date(booking.ride.departureTime).toLocaleString() : 'N/A'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={bookingActionId === booking._id}
+                          onClick={() => handleBookingAction(booking._id, 'accepted')}
+                          className="h-9 px-3 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={bookingActionId === booking._id}
+                          onClick={() => handleBookingAction(booking._id, 'rejected')}
+                          className="h-9 px-3 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#475569] text-gray-200 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {ridesLoading ? (
             <div className="text-gray-300 text-sm">Loading your rides...</div>
@@ -1032,13 +1285,42 @@ const SharerMode = () => {
                   {editRideId === ride._id && (
                     <div className="border-t border-[#334155] pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs text-gray-400 mb-1">Departure</label>
+                        <label className="block text-xs text-gray-400 mb-1">Departure Date</label>
                         <input
-                          type="datetime-local"
-                          value={editForm.departureTime}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, departureTime: e.target.value }))}
+                          type="date"
+                          value={editForm.departureDate}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, departureDate: e.target.value }))}
                           className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
                         />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Departure Time</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="12"
+                            value={editForm.departureHour}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, departureHour: e.target.value }))}
+                            className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={editForm.departureMinute}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, departureMinute: e.target.value }))}
+                            className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                          />
+                          <select
+                            value={editForm.departurePeriod}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, departurePeriod: e.target.value }))}
+                            className="w-full h-11 bg-[#0F172A] border border-[#334155] rounded-lg px-3 text-white"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs text-gray-400 mb-1">Ride Status</label>
