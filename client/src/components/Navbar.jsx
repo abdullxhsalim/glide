@@ -8,6 +8,12 @@ const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const getRoleLabel = (role) => {
+    if (role === 'hopper' || role === 'rider') return 'Hopper';
+    if (role === 'driver') return 'Sharer';
+    return role;
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -48,7 +54,7 @@ const Navbar = () => {
                 <div className="flex items-center gap-3 pl-2">
                   <div className="text-right hidden lg:block">
                     <p className="text-sm font-medium text-white">{user.name}</p>
-                    <p className="text-xs text-gray-400 capitalize">{user.role}</p>
+                    <p className="text-xs text-gray-400">{getRoleLabel(user.role)}</p>
                   </div>
                   <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white font-bold shadow-lg shadow-[#10B981]/20 ring-2 ring-[#1E293B]">
                     {user.name ? user.name.charAt(0).toUpperCase() : <User className="w-5 h-5" />}
