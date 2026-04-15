@@ -1,4 +1,5 @@
 const Ride = require('../models/Ride');
+const PartnerRequest = require('../models/PartnerRequest');
 const decodePolyline = require('../utils/polyline');
 
 // Helper: Calculate distance between two points (Haversine formula)
@@ -156,6 +157,352 @@ const getRides = async (req, res) => {
   }
 };
 
+// @desc    Find ride partners around same route/time
+// @route   GET /api/rides/find-partners
+// @access  Private
+const findPartners = async (req, res) => {
+    try {
+        const {
+            pickupLat,
+            pickupLng,
+            dropoffLat,
+            dropoffLng,
+            date,
+            time,
+            locationThresholdKm,
+            timeWindowMin
+        } = req.query;
+
+        if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng || !date || !time) {
+            return res.status(400).json({
+                message: 'Pickup, destination, date and time are required to find partners'
+            });
+        }
+
+        const pLat = parseFloat(pickupLat);
+        const pLng = parseFloat(pickupLng);
+        const dLat = parseFloat(dropoffLat);
+        const dLng = parseFloat(dropoffLng);
+
+        if ([pLat, pLng, dLat, dLng].some((n) => Number.isNaN(n))) {
+            return res.status(400).json({ message: 'Invalid pickup/dropoff coordinates' });
+        }
+
+        const [timePart, modifier] = time.split(' ');
+        if (!timePart || !modifier) {
+            return res.status(400).json({ message: 'Time must be in format hh:mm AM/PM' });
+        }
+
+        let [hours, minutes] = timePart.split(':').map(Number);
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+            return res.status(400).json({ message: 'Invalid time value' });
+        }
+
+        if (hours === 12) hours = 0;
+        if (modifier === 'PM') hours += 12;
+
+        const [year, month, day] = date.split('-').map(Number);
+        const requestedDateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        if (Number.isNaN(requestedDateTime.getTime())) {
+            return res.status(400).json({ message: 'Invalid date value' });
+        }
+
+        const windowMinutes = Math.max(15, parseInt(timeWindowMin || '90', 10));
+        const thresholdKm = Math.max(1, parseFloat(locationThresholdKm || '3.5'));
+
+        const minTime = new Date(requestedDateTime.getTime() - windowMinutes * 60 * 1000);
+        const maxTime = new Date(requestedDateTime.getTime() + windowMinutes * 60 * 1000);
+
+        const requests = await PartnerRequest.find({
+            status: 'pending',
+            requestedAt: { $gte: minTime, $lte: maxTime },
+            requester: { $ne: req.user.id }
+        })
+            .populate('requester', 'name email contactNumber phone')
+            .sort({ requestedAt: 1 });
+
+        const partnerMatches = requests
+            .map((request) => {
+                const pickupCoords = request.pickup?.coordinates || [];
+                const destinationCoords = request.destination?.coordinates || [];
+
+                if (pickupCoords.length !== 2 || destinationCoords.length !== 2) {
+                    return null;
+                }
+
+                const pickupDistance = getDistance(pLat, pLng, pickupCoords[1], pickupCoords[0]);
+                const dropoffDistance = getDistance(dLat, dLng, destinationCoords[1], destinationCoords[0]);
+                const isNearby = pickupDistance <= thresholdKm && dropoffDistance <= thresholdKm;
+
+                if (!isNearby) {
+                    return null;
+                }
+
+                return {
+                    requestId: request._id,
+                    partnerName: request.requester?.name || 'Unknown',
+                    contactNumber:
+                        request.requester?.contactNumber || request.requester?.phone || request.requester?.email || 'Not provided',
+                    pickupLocation: request.pickup?.placeName || request.pickup?.address || 'Unknown',
+                    destinationLocation: request.destination?.placeName || request.destination?.address || 'Unknown',
+                    pickupCoordinates: {
+                        lat: request.pickup?.coordinates?.[1],
+                        lng: request.pickup?.coordinates?.[0]
+                    },
+                    destinationCoordinates: {
+                        lat: request.destination?.coordinates?.[1],
+                        lng: request.destination?.coordinates?.[0]
+                    },
+                    departureTime: request.requestedAt,
+                    pickupDistanceKm: Number(pickupDistance.toFixed(2)),
+                    dropoffDistanceKm: Number(dropoffDistance.toFixed(2))
+                };
+            })
+            .filter(Boolean);
+
+        res.json(partnerMatches);
+    } catch (error) {
+        console.error('Error finding partners:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Save partner request information
+// @route   POST /api/rides/partner-requests
+// @access  Private
+const createPartnerRequest = async (req, res) => {
+    try {
+        const { pickup, destination, date, time } = req.body;
+
+        if (!pickup || !destination || !date || !time) {
+            return res.status(400).json({ message: 'Pickup, destination, date and time are required' });
+        }
+
+        const pickupLat = Number(pickup.lat);
+        const pickupLng = Number(pickup.lng);
+        const destinationLat = Number(destination.lat);
+        const destinationLng = Number(destination.lng);
+
+        if (
+            !Number.isFinite(pickupLat) ||
+            !Number.isFinite(pickupLng) ||
+            !Number.isFinite(destinationLat) ||
+            !Number.isFinite(destinationLng)
+        ) {
+            return res.status(400).json({ message: 'Invalid pickup/destination coordinates' });
+        }
+
+        const normalizeCoord = (value) => Number(Number(value).toFixed(6));
+        const normalizedPickupLat = normalizeCoord(pickupLat);
+        const normalizedPickupLng = normalizeCoord(pickupLng);
+        const normalizedDestinationLat = normalizeCoord(destinationLat);
+        const normalizedDestinationLng = normalizeCoord(destinationLng);
+
+        const [timePart, modifier] = String(time).split(' ');
+        if (!timePart || !modifier) {
+            return res.status(400).json({ message: 'Time must be in format hh:mm AM/PM' });
+        }
+
+        let [hours, minutes] = timePart.split(':').map(Number);
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+            return res.status(400).json({ message: 'Invalid time value' });
+        }
+
+        if (hours === 12) hours = 0;
+        if (modifier === 'PM') hours += 12;
+
+        const [year, month, day] = String(date).split('-').map(Number);
+        const requestedAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+        if (Number.isNaN(requestedAt.getTime())) {
+            return res.status(400).json({ message: 'Invalid date value' });
+        }
+
+        const existingRequest = await PartnerRequest.findOne({
+            requester: req.user.id,
+            status: 'pending',
+            requestedAt,
+            requestedTimeLabel: String(time),
+            'pickup.coordinates': [normalizedPickupLng, normalizedPickupLat],
+            'destination.coordinates': [normalizedDestinationLng, normalizedDestinationLat]
+        });
+
+        if (existingRequest) {
+            return res.status(200).json({
+                message: 'Same request already exists. Reusing your existing request.',
+                requestId: existingRequest._id,
+                duplicate: true
+            });
+        }
+
+        const savedRequest = await PartnerRequest.create({
+            requester: req.user.id,
+            pickup: {
+                type: 'Point',
+                coordinates: [normalizedPickupLng, normalizedPickupLat],
+                placeName: pickup.name || pickup.address || '',
+                address: pickup.address || pickup.name || ''
+            },
+            destination: {
+                type: 'Point',
+                coordinates: [normalizedDestinationLng, normalizedDestinationLat],
+                placeName: destination.name || destination.address || '',
+                address: destination.address || destination.name || ''
+            },
+            requestedAt,
+            requestedTimeLabel: String(time)
+        });
+
+        res.status(201).json({
+            message: 'Partner request saved successfully',
+            requestId: savedRequest._id
+        });
+    } catch (error) {
+        console.error('Error saving partner request:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Get logged-in user's ongoing partner requests
+// @route   GET /api/rides/partner-requests/mine
+// @access  Private
+const getMyPartnerRequests = async (req, res) => {
+    try {
+        const requests = await PartnerRequest.find({
+            requester: req.user.id,
+            status: 'pending'
+        }).sort({ requestedAt: -1 });
+
+        const formatted = requests.map((request) => ({
+            requestId: request._id,
+            pickupLocation: request.pickup?.placeName || request.pickup?.address || 'Unknown',
+            destinationLocation: request.destination?.placeName || request.destination?.address || 'Unknown',
+            pickupAddress: request.pickup?.address || '',
+            destinationAddress: request.destination?.address || '',
+            pickupCoordinates: {
+                lat: request.pickup?.coordinates?.[1],
+                lng: request.pickup?.coordinates?.[0]
+            },
+            destinationCoordinates: {
+                lat: request.destination?.coordinates?.[1],
+                lng: request.destination?.coordinates?.[0]
+            },
+            departureTime: request.requestedAt,
+            timeLabel: request.requestedTimeLabel,
+            status: request.status
+        }));
+
+        res.json(formatted);
+    } catch (error) {
+        console.error('Error fetching my partner requests:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Update logged-in user's partner request
+// @route   PUT /api/rides/partner-requests/:id
+// @access  Private
+const updateMyPartnerRequest = async (req, res) => {
+    try {
+        const request = await PartnerRequest.findById(req.params.id);
+
+        if (!request) {
+            return res.status(404).json({ message: 'Partner request not found' });
+        }
+
+        if (request.requester.toString() !== req.user.id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to update this request' });
+        }
+
+        const { pickupLocation, destinationLocation, date, time } = req.body;
+
+        if (pickupLocation !== undefined) {
+            request.pickup.placeName = String(pickupLocation).trim();
+            request.pickup.address = String(pickupLocation).trim();
+        }
+
+        if (destinationLocation !== undefined) {
+            request.destination.placeName = String(destinationLocation).trim();
+            request.destination.address = String(destinationLocation).trim();
+        }
+
+        if (date !== undefined || time !== undefined) {
+            const nextDate = date || request.requestedAt.toISOString().slice(0, 10);
+            const nextTime = time || request.requestedTimeLabel;
+
+            const [timePart, modifier] = String(nextTime).split(' ');
+            if (!timePart || !modifier) {
+                return res.status(400).json({ message: 'Time must be in format hh:mm AM/PM' });
+            }
+
+            let [hours, minutes] = timePart.split(':').map(Number);
+            if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+                return res.status(400).json({ message: 'Invalid time value' });
+            }
+
+            if (hours === 12) hours = 0;
+            if (modifier === 'PM') hours += 12;
+
+            const [year, month, day] = String(nextDate).split('-').map(Number);
+            const requestedAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+            if (Number.isNaN(requestedAt.getTime())) {
+                return res.status(400).json({ message: 'Invalid date value' });
+            }
+
+            request.requestedAt = requestedAt;
+            request.requestedTimeLabel = String(nextTime);
+        }
+
+        await request.save();
+
+        res.json({
+            requestId: request._id,
+            pickupLocation: request.pickup?.placeName || request.pickup?.address || 'Unknown',
+            destinationLocation: request.destination?.placeName || request.destination?.address || 'Unknown',
+            pickupAddress: request.pickup?.address || '',
+            destinationAddress: request.destination?.address || '',
+            pickupCoordinates: {
+                lat: request.pickup?.coordinates?.[1],
+                lng: request.pickup?.coordinates?.[0]
+            },
+            destinationCoordinates: {
+                lat: request.destination?.coordinates?.[1],
+                lng: request.destination?.coordinates?.[0]
+            },
+            departureTime: request.requestedAt,
+            timeLabel: request.requestedTimeLabel,
+            status: request.status
+        });
+    } catch (error) {
+        console.error('Error updating partner request:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Delete logged-in user's partner request
+// @route   DELETE /api/rides/partner-requests/:id
+// @access  Private
+const deleteMyPartnerRequest = async (req, res) => {
+    try {
+        const request = await PartnerRequest.findById(req.params.id);
+
+        if (!request) {
+            return res.status(404).json({ message: 'Partner request not found' });
+        }
+
+        if (request.requester.toString() !== req.user.id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to delete this request' });
+        }
+
+        await request.deleteOne();
+        res.json({ message: 'Partner request deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting partner request:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 // @desc    Create a new ride
 // @route   POST /api/rides
 // @access  Private
@@ -304,6 +651,11 @@ const deleteMyRide = async (req, res) => {
 
 module.exports = {
   getRides,
+    findPartners,
+        createPartnerRequest,
+        getMyPartnerRequests,
+                updateMyPartnerRequest,
+                deleteMyPartnerRequest,
     createRide,
     getMyRides,
     updateMyRide,

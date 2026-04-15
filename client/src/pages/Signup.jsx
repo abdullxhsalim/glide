@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Mail, Lock, Key, Car, Hash, ArrowRight, ArrowLeft, CheckCircle, ShieldCheck, MapPin } from 'lucide-react';
+import { User, Mail, Lock, Key, Car, Hash, ArrowRight, ArrowLeft, CheckCircle, ShieldCheck, MapPin, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 // External Progress Bar Component to prevent re-renders
@@ -36,6 +36,7 @@ const Signup = () => {
         name: '',
         email: '',
         studentId: '',
+        contactNumber: '',
         password: '',
         confirmPassword: '',
         role: 'rider', // default role
@@ -84,7 +85,7 @@ const Signup = () => {
     const handleNext = () => {
         // Validation check for steps
         if (step === 2) {
-             if (!formData.name || !formData.email || !formData.studentId) {
+                 if (!formData.name || !formData.email || !formData.studentId || !formData.contactNumber) {
                 setError("Please fill in all personal fields.");
                 return;
              }
@@ -133,6 +134,7 @@ const Signup = () => {
                     name: formData.name,
                     email: formData.email,
                     studentId: formData.studentId,
+                    contactNumber: formData.contactNumber,
                     password: formData.password,
                     role: formData.role,
                     vehicle: formData.role === 'driver' ? formData.vehicle : undefined
@@ -292,6 +294,23 @@ const Signup = () => {
                                             className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#0F172A] border border-[#334155] text-[#F8FAFC] placeholder-[#475569] focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] transition-all"
                                             placeholder="20XXXXXX"
                                             value={formData.studentId}
+                                            onChange={handleChange}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-400 ml-1">Contact Number</label>
+                                    <div className="relative group">
+                                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#94A3B8] group-focus-within:text-[#10B981] transition-colors" />
+                                        <input
+                                            name="contactNumber"
+                                            type="text"
+                                            inputMode="tel"
+                                            required
+                                            className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#0F172A] border border-[#334155] text-[#F8FAFC] placeholder-[#475569] focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981] transition-all"
+                                            placeholder="01XXXXXXXXX"
+                                            value={formData.contactNumber}
                                             onChange={handleChange}
                                         />
                                     </div>

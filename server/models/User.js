@@ -29,6 +29,17 @@ const userSchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
+  contactNumber: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  // Legacy compatibility: older records may store phone under this key
+  phone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   password: {
     type: String,
     required: true,

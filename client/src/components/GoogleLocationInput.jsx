@@ -148,8 +148,8 @@ const GoogleLocationInput = ({
             <Autocomplete
                 onLoad={onLoad}
                 onPlaceChanged={onPlaceChanged}
-                restrictions={{ country: "bd" }} 
                 options={{
+                  componentRestrictions: { country: 'bd' },
                   fields: ['place_id', 'name', 'formatted_address', 'address_components', 'geometry']
                 }}
             >

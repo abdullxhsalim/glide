@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, MapPin, Clock, User, Star, Loader, ArrowRight, Calendar, Locate } from 'lucide-react';
+import { Search, MapPin, Clock, User, Star, Loader, ArrowRight, ArrowLeft, Calendar, Locate, Phone, Edit3, Trash2 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import RouteMap from '../components/RouteMap';
 import GoogleLocationInput from '../components/GoogleLocationInput';
@@ -25,6 +25,30 @@ const HopperMode = () => {
   const [bookingError, setBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState('');
 
+  const [showPartnerFinder, setShowPartnerFinder] = useState(false);
+  const [partnerLoading, setPartnerLoading] = useState(false);
+  const [isFindingPartners, setIsFindingPartners] = useState(false);
+  const [myRequestsLoading, setMyRequestsLoading] = useState(false);
+  const [showMyRequests, setShowMyRequests] = useState(false);
+  const [myPartnerRequests, setMyPartnerRequests] = useState([]);
+  const [editingRequestId, setEditingRequestId] = useState('');
+  const [savingRequestId, setSavingRequestId] = useState('');
+  const [deletingRequestId, setDeletingRequestId] = useState('');
+  const [requestEditForm, setRequestEditForm] = useState({
+    pickupLocation: '',
+    destinationLocation: '',
+    date: '',
+    time: ''
+  });
+  const [partnerError, setPartnerError] = useState('');
+  const [partnerSuccess, setPartnerSuccess] = useState('');
+  const [partnerResults, setPartnerResults] = useState([]);
+  const [partnerRequestConfirmed, setPartnerRequestConfirmed] = useState(false);
+  const [partnerOriginLocation, setPartnerOriginLocation] = useState(null);
+  const [partnerDestLocation, setPartnerDestLocation] = useState(null);
+  const [partnerOriginInput, setPartnerOriginInput] = useState('');
+  const [partnerDestInput, setPartnerDestInput] = useState('');
+
   const [originLocation, setOriginLocation] = useState(null);
   const [destLocation, setDestLocation] = useState(null);
   const [originInput, setOriginInput] = useState('');
@@ -47,6 +71,13 @@ const HopperMode = () => {
     durationMin: 0,
     routeGeometry: null
   });
+
+  const getGeocoderName = (result) => {
+    if (!result) return '';
+    const poi = result.address_components?.find((c) => c.types?.includes('point_of_interest'))?.long_name;
+    const locality = result.address_components?.find((c) => c.types?.includes('locality'))?.long_name;
+    return poi || locality || '';
+  };
 
 
   const fetchRides = async (searchParams = {}) => {
@@ -211,6 +242,492 @@ const HopperMode = () => {
       fetchRides({ origin: originLocation, destination: destLocation, date, time });
   };
 
+  const handlePartnerInputChange = (field, value) => {
+    setPartnerRequestConfirmed(false);
+    if (field === 'origin') {
+      setPartnerOriginInput(value);
+      if (value === '') setPartnerOriginLocation(null);
+    }
+    if (field === 'destination') {
+      setPartnerDestInput(value);
+      if (value === '') setPartnerDestLocation(null);
+    }
+  };
+
+  const handlePartnerPlaceSelected = (field, placeData) => {
+    setPartnerRequestConfirmed(false);
+    const normalizedPlace = {
+      name: placeData.name || placeData.address,
+      address: placeData.address,
+      lat: placeData.lat,
+      lng: placeData.lng,
+      place_id: placeData.place_id
+    };
+
+    if (field === 'origin') {
+      setPartnerOriginLocation(normalizedPlace);
+      setPartnerOriginInput(normalizedPlace.name);
+    }
+    if (field === 'destination') {
+      setPartnerDestLocation(normalizedPlace);
+      setPartnerDestInput(normalizedPlace.name);
+    }
+  };
+
+  const handlePartnerMapClick = (e) => {
+    if (!isLoaded || !window.google) return;
+
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const address = results[0].formatted_address;
+        const name = getGeocoderName(results[0]) || address;
+        const place = {
+          name,
+          address,
+          lat,
+          lng,
+          place_id: results[0].place_id
+        };
+
+        if (!partnerOriginLocation) {
+          setPartnerRequestConfirmed(false);
+          setPartnerOriginLocation(place);
+          setPartnerOriginInput(name);
+        } else {
+          setPartnerRequestConfirmed(false);
+          setPartnerDestLocation(place);
+          setPartnerDestInput(name);
+        }
+      }
+    });
+  };
+
+  const handleFindPartner = async () => {
+    setPartnerError('');
+    setPartnerResults([]);
+
+    if (!partnerOriginLocation || !partnerDestLocation || !date || !time) {
+      setPartnerError('Please select pickup, destination, date and time before finding a partner.');
+      return;
+    }
+
+    const pickupLat = Number(partnerOriginLocation.lat);
+    const pickupLng = Number(partnerOriginLocation.lng);
+    const dropoffLat = Number(partnerDestLocation.lat);
+    const dropoffLng = Number(partnerDestLocation.lng);
+
+    if (
+      !Number.isFinite(pickupLat) ||
+      !Number.isFinite(pickupLng) ||
+      !Number.isFinite(dropoffLat) ||
+      !Number.isFinite(dropoffLng)
+    ) {
+      setPartnerError('Pickup or destination coordinates are invalid. Please select locations from map/search again.');
+      return;
+    }
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setPartnerError('Please login to find a partner.');
+        return;
+      }
+
+      setIsFindingPartners(true);
+      setPartnerLoading(true);
+
+      const params = new URLSearchParams({
+        pickupLat: String(pickupLat),
+        pickupLng: String(pickupLng),
+        dropoffLat: String(dropoffLat),
+        dropoffLng: String(dropoffLng),
+        date,
+        time
+      });
+
+      const res = await fetch(`/api/rides/find-partners?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to find partners');
+      }
+
+      setPartnerResults(data);
+    } catch (err) {
+      setPartnerError(err.message || 'Failed to find partners');
+    } finally {
+      setIsFindingPartners(false);
+      setPartnerLoading(false);
+    }
+  };
+
+  const handleFindPartnerForMyRequest = async (request) => {
+    setPartnerError('');
+    setPartnerSuccess('');
+    setPartnerResults([]);
+
+    const pickupLat = Number(request?.pickupCoordinates?.lat);
+    const pickupLng = Number(request?.pickupCoordinates?.lng);
+    const dropoffLat = Number(request?.destinationCoordinates?.lat);
+    const dropoffLng = Number(request?.destinationCoordinates?.lng);
+
+    const requestedDate = formatDateInput(request?.departureTime);
+    const requestedTime = request?.timeLabel || '';
+
+    if (
+      !Number.isFinite(pickupLat) ||
+      !Number.isFinite(pickupLng) ||
+      !Number.isFinite(dropoffLat) ||
+      !Number.isFinite(dropoffLng) ||
+      !requestedDate ||
+      !requestedTime
+    ) {
+      setPartnerError('This request does not have complete information to find partner.');
+      return;
+    }
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setPartnerError('Please login to find a partner.');
+        return;
+      }
+
+      setIsFindingPartners(true);
+      setPartnerLoading(true);
+
+      // Mirror selected request into finder state for visibility/continuation.
+      setPartnerOriginLocation({
+        name: request.pickupLocation,
+        address: request.pickupAddress || request.pickupLocation,
+        lat: pickupLat,
+        lng: pickupLng
+      });
+      setPartnerDestLocation({
+        name: request.destinationLocation,
+        address: request.destinationAddress || request.destinationLocation,
+        lat: dropoffLat,
+        lng: dropoffLng
+      });
+      setPartnerOriginInput(request.pickupLocation || '');
+      setPartnerDestInput(request.destinationLocation || '');
+      setDate(requestedDate);
+      setTime(requestedTime);
+      setPartnerRequestConfirmed(true);
+      setShowMyRequests(false);
+
+      const params = new URLSearchParams({
+        pickupLat: String(pickupLat),
+        pickupLng: String(pickupLng),
+        dropoffLat: String(dropoffLat),
+        dropoffLng: String(dropoffLng),
+        date: requestedDate,
+        time: requestedTime
+      });
+
+      const res = await fetch(`/api/rides/find-partners?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to find partners');
+      }
+
+      setPartnerResults(data);
+    } catch (err) {
+      setPartnerError(err.message || 'Failed to find partners');
+    } finally {
+      setIsFindingPartners(false);
+      setPartnerLoading(false);
+    }
+  };
+
+  const handleSendPartnerInformation = async () => {
+    setPartnerError('');
+    setPartnerSuccess('');
+
+    if (!partnerOriginLocation || !partnerDestLocation || !date || !time) {
+      setPartnerError('Please insert pickup, destination, date and time first.');
+      return;
+    }
+
+    const pickupLat = Number(partnerOriginLocation.lat);
+    const pickupLng = Number(partnerOriginLocation.lng);
+    const dropoffLat = Number(partnerDestLocation.lat);
+    const dropoffLng = Number(partnerDestLocation.lng);
+
+    if (
+      !Number.isFinite(pickupLat) ||
+      !Number.isFinite(pickupLng) ||
+      !Number.isFinite(dropoffLat) ||
+      !Number.isFinite(dropoffLng)
+    ) {
+      setPartnerError('Pickup or destination coordinates are invalid. Please select locations from map/search again.');
+      return;
+    }
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setPartnerError('Please login to send your partner request.');
+        return;
+      }
+
+      setPartnerLoading(true);
+
+      const response = await fetch('/api/rides/partner-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          pickup: {
+            name: partnerOriginLocation.name || partnerOriginInput,
+            address: partnerOriginLocation.address || partnerOriginInput,
+            lat: pickupLat,
+            lng: pickupLng
+          },
+          destination: {
+            name: partnerDestLocation.name || partnerDestInput,
+            address: partnerDestLocation.address || partnerDestInput,
+            lat: dropoffLat,
+            lng: dropoffLng
+          },
+          date,
+          time
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.message || 'Failed to send your information');
+      }
+
+      setPartnerSuccess(payload.message || 'Your information has been sent successfully. Click Find Partner to match similar requests.');
+      setPartnerRequestConfirmed(true);
+    } catch (err) {
+      setPartnerError(err.message || 'Failed to send your information');
+    } finally {
+      setPartnerLoading(false);
+    }
+  };
+
+  const handleLoadMyRequests = async () => {
+    setPartnerError('');
+    setPartnerSuccess('');
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setPartnerError('Please login to view your requests.');
+        return;
+      }
+
+      setMyRequestsLoading(true);
+      setShowMyRequests(true);
+
+      const response = await fetch('/api/rides/partner-requests/mine', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to load your partner requests');
+      }
+
+      setMyPartnerRequests(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setPartnerError(err.message || 'Failed to load your partner requests');
+    } finally {
+      setMyRequestsLoading(false);
+    }
+  };
+
+  const formatPartnerSearchTime = (dateString) => {
+    const dt = new Date(dateString);
+    if (Number.isNaN(dt.getTime())) return '';
+
+    let hour = dt.getHours();
+    const suffix = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour === 0) hour = 12;
+
+    return `${String(hour).padStart(2, '0')}:00 ${suffix}`;
+  };
+
+  const formatDateInput = (dateString) => {
+    const dt = new Date(dateString);
+    if (Number.isNaN(dt.getTime())) return '';
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleEditMyRequest = (request) => {
+    setEditingRequestId(request.requestId);
+    setRequestEditForm({
+      pickupLocation: request.pickupLocation || '',
+      destinationLocation: request.destinationLocation || '',
+      date: formatDateInput(request.departureTime),
+      time: request.timeLabel || ''
+    });
+  };
+
+  const handleSaveMyRequest = async (requestId) => {
+    setPartnerError('');
+
+    if (
+      !requestEditForm.pickupLocation.trim() ||
+      !requestEditForm.destinationLocation.trim() ||
+      !requestEditForm.date ||
+      !requestEditForm.time
+    ) {
+      setPartnerError('Please fill pickup, destination, date and time before saving request changes.');
+      return;
+    }
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setPartnerError('Please login to edit your request.');
+        return;
+      }
+
+      setSavingRequestId(requestId);
+
+      const response = await fetch(`/api/rides/partner-requests/${requestId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          pickupLocation: requestEditForm.pickupLocation.trim(),
+          destinationLocation: requestEditForm.destinationLocation.trim(),
+          date: requestEditForm.date,
+          time: requestEditForm.time
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update request');
+      }
+
+      setMyPartnerRequests((prev) => prev.map((req) => (req.requestId === requestId ? data : req)));
+      setEditingRequestId('');
+    } catch (err) {
+      setPartnerError(err.message || 'Failed to update request');
+    } finally {
+      setSavingRequestId('');
+    }
+  };
+
+  const handleDeleteMyRequest = async (requestId) => {
+    setPartnerError('');
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setPartnerError('Please login to delete your request.');
+        return;
+      }
+
+      setDeletingRequestId(requestId);
+
+      const response = await fetch(`/api/rides/partner-requests/${requestId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete request');
+      }
+
+      setMyPartnerRequests((prev) => prev.filter((req) => req.requestId !== requestId));
+      if (editingRequestId === requestId) {
+        setEditingRequestId('');
+      }
+    } catch (err) {
+      setPartnerError(err.message || 'Failed to delete request');
+    } finally {
+      setDeletingRequestId('');
+    }
+  };
+
+  const handleUsePartnerInfo = (partner) => {
+    setPartnerRequestConfirmed(false);
+    const pickupLat = partner?.pickupCoordinates?.lat;
+    const pickupLng = partner?.pickupCoordinates?.lng;
+    const dropoffLat = partner?.destinationCoordinates?.lat;
+    const dropoffLng = partner?.destinationCoordinates?.lng;
+
+    if (typeof pickupLat === 'number' && typeof pickupLng === 'number') {
+      setPartnerOriginLocation({
+        name: partner.pickupLocation,
+        address: partner.pickupLocation,
+        lat: pickupLat,
+        lng: pickupLng,
+        place_id: undefined
+      });
+      setPartnerOriginInput(partner.pickupLocation || '');
+    }
+
+    if (typeof dropoffLat === 'number' && typeof dropoffLng === 'number') {
+      setPartnerDestLocation({
+        name: partner.destinationLocation,
+        address: partner.destinationLocation,
+        lat: dropoffLat,
+        lng: dropoffLng,
+        place_id: undefined
+      });
+      setPartnerDestInput(partner.destinationLocation || '');
+    }
+
+    if (partner?.departureTime) {
+      const dt = new Date(partner.departureTime);
+      if (!Number.isNaN(dt.getTime())) {
+        const yyyy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, '0');
+        const dd = String(dt.getDate()).padStart(2, '0');
+        setDate(`${yyyy}-${mm}-${dd}`);
+        setTime(formatPartnerSearchTime(partner.departureTime));
+      }
+    }
+
+    setPartnerError('');
+  };
+
   const handleFindActiveRides = () => {
     if (!date) {
       setError('Please select a date first');
@@ -347,6 +864,8 @@ const HopperMode = () => {
             </p>
         </div>
 
+        {!showPartnerFinder && (
+        <>
         {/* Search Card */}
         <div className="max-w-2xl mx-auto bg-[#334155]/30 backdrop-blur-xl rounded-3xl p-8 border border-[#334155] shadow-2xl relative overflow-hidden transition-all duration-300">
             
@@ -500,7 +1019,367 @@ const HopperMode = () => {
             </div>
         </div>
 
-        {/* Results Section */}
+        <div className="max-w-2xl mx-auto mt-8">
+          <button
+            onClick={() => {
+              setShowPartnerFinder(true);
+              setPartnerError('');
+              setPartnerSuccess('');
+              setPartnerRequestConfirmed(false);
+            }}
+            className="w-full py-4 bg-[#1E293B] border border-[#334155] hover:border-[#10B981] text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            <User className="w-5 h-5 text-[#10B981]" />
+            Can't find any Ride? Find a Partner to share
+          </button>
+        </div>
+        </>
+        )}
+
+        {showPartnerFinder && (
+          <div className="max-w-2xl mx-auto mt-6 bg-[#334155]/30 backdrop-blur-xl rounded-3xl p-8 border border-[#334155] shadow-2xl">
+            {!showMyRequests && (
+              <>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <h2 className="text-2xl font-bold text-white">Partner Finder</h2>
+              <button
+                onClick={handleLoadMyRequests}
+                disabled={myRequestsLoading}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155] text-gray-200 hover:border-[#0EA5E9] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {myRequestsLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
+                My Request
+              </button>
+            </div>
+            <p className="text-gray-400 mb-6">Select pickup and destination from map/search, choose date and time, then find nearby partners.</p>
+
+            <div className="grid grid-cols-1 gap-5">
+              <GoogleLocationInput
+                label="Pickup Location"
+                value={partnerOriginInput}
+                onChange={(val) => handlePartnerInputChange('origin', val)}
+                onPlaceSelected={(place) => handlePartnerPlaceSelected('origin', place)}
+                isLoaded={isLoaded}
+                placeholder="Search pickup location..."
+                icon={MapPin}
+              />
+              <GoogleLocationInput
+                label="Destination"
+                value={partnerDestInput}
+                onChange={(val) => handlePartnerInputChange('destination', val)}
+                onPlaceSelected={(place) => handlePartnerPlaceSelected('destination', place)}
+                isLoaded={isLoaded}
+                placeholder="Search destination..."
+                icon={MapPin}
+              />
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Date</label>
+                <div className="relative">
+                  <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => {
+                      setPartnerRequestConfirmed(false);
+                      setDate(e.target.value);
+                    }}
+                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Time</label>
+                <div className="relative">
+                  <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
+                  <select
+                    value={time}
+                    onChange={(e) => {
+                      setPartnerRequestConfirmed(false);
+                      setTime(e.target.value);
+                    }}
+                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none transition-all"
+                  >
+                    <option value="">Select Time</option>
+                    <option>08:00 AM</option>
+                    <option>09:00 AM</option>
+                    <option>10:00 AM</option>
+                    <option>11:00 AM</option>
+                    <option>12:00 PM</option>
+                    <option>01:00 PM</option>
+                    <option>02:00 PM</option>
+                    <option>03:00 PM</option>
+                    <option>04:00 PM</option>
+                    <option>05:00 PM</option>
+                    <option>06:00 PM</option>
+                    <option>07:00 PM</option>
+                    <option>08:00 PM</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-xl overflow-hidden border border-[#334155] h-[280px] relative">
+              <div className="absolute top-4 right-4 z-10 bg-[#1E293B]/80 backdrop-blur px-3 py-1 rounded-full border border-[#334155] text-xs text-gray-300">
+                {!partnerOriginLocation ? 'Click map to set Pickup' : !partnerDestLocation ? 'Click map to set Destination' : 'Partner Route Selected'}
+              </div>
+              <RouteMap
+                origin={partnerOriginLocation ? [partnerOriginLocation.lng, partnerOriginLocation.lat] : null}
+                destination={partnerDestLocation ? [partnerDestLocation.lng, partnerDestLocation.lat] : null}
+                geometry={null}
+                isLoaded={isLoaded}
+                onMapClick={handlePartnerMapClick}
+              />
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowPartnerFinder(false)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1E293B] border border-[#334155] text-gray-200 hover:border-[#4F46E5] transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+
+              <button
+                onClick={handleSendPartnerInformation}
+                disabled={partnerLoading || !partnerOriginLocation || !partnerDestLocation || !date || !time}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1E293B] border border-[#334155] text-white font-semibold hover:border-[#10B981] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {partnerLoading ? <Loader className="w-4 h-4 animate-spin" /> : null}
+                {partnerLoading ? 'Sending...' : 'Send your information'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {partnerRequestConfirmed && (
+              <button
+                onClick={handleFindPartner}
+                disabled={partnerLoading || !partnerOriginLocation || !partnerDestLocation || !date || !time}
+                className="w-full mt-3 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#0EA5E9] border border-[#0284C7] text-white font-semibold hover:bg-[#0284C7] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {partnerLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                {partnerLoading ? 'Finding...' : 'Find Partner'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+
+            {isFindingPartners && partnerLoading && (
+              <div className="mt-4 p-5 bg-[#1E293B] border border-[#334155] rounded-xl flex items-center gap-3 text-gray-200">
+                <Loader className="w-5 h-5 animate-spin text-[#10B981]" />
+                <div>
+                  <p className="font-semibold text-white">Finding matching requests...</p>
+                  <p className="text-sm text-gray-400">Trying to match similar pickup, destination and time information.</p>
+                </div>
+              </div>
+            )}
+
+            {partnerSuccess && (
+              <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-sm rounded-xl">
+                {partnerSuccess}
+              </div>
+            )}
+
+            {partnerError && (
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 text-red-200 text-sm rounded-xl">
+                {partnerError}
+              </div>
+            )}
+
+            {!partnerLoading && partnerResults.length === 0 && !partnerError && (
+              <div className="mt-4 p-4 bg-[#1E293B] border border-[#334155] text-gray-300 text-sm rounded-xl">
+                Fill in pickup, destination, date and time. First click Send your information, then click Find Partner.
+              </div>
+            )}
+
+            {partnerResults.length > 0 && (
+              <div className="mt-6 space-y-4">
+                {partnerResults.map((partner) => (
+                  <div key={partner.requestId || partner.rideId} className="bg-[#1E293B] rounded-2xl p-5 border border-[#334155]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-white">{partner.partnerName}</h3>
+                        <p className="text-gray-400 text-sm mt-1">Matched pickup: {partner.pickupLocation}</p>
+                        <p className="text-gray-400 text-sm">Destination: {partner.destinationLocation}</p>
+                      </div>
+                      <div className="text-right text-sm text-gray-300">
+                        <p className="font-semibold">{formatDate(partner.departureTime)}</p>
+                        <p>{formatTime(partner.departureTime)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                      <div className="inline-flex items-center gap-2 bg-[#334155]/50 text-gray-200 px-3 py-1.5 rounded-lg">
+                        <Phone className="w-4 h-4 text-[#10B981]" />
+                        {partner.contactNumber}
+                      </div>
+                      <div className="inline-flex items-center gap-2 bg-[#334155]/50 text-gray-200 px-3 py-1.5 rounded-lg">
+                        <MapPin className="w-4 h-4 text-[#0EA5E9]" />
+                        Pickup ~ {partner.pickupDistanceKm} km
+                      </div>
+                      <div className="inline-flex items-center gap-2 bg-[#334155]/50 text-gray-200 px-3 py-1.5 rounded-lg">
+                        <MapPin className="w-4 h-4 text-[#A78BFA]" />
+                        Dropoff ~ {partner.dropoffDistanceKm} km
+                      </div>
+                      <div className="inline-flex items-center gap-2 bg-[#334155]/50 text-gray-200 px-3 py-1.5 rounded-lg">
+                        <User className="w-4 h-4 text-[#F59E0B]" />
+                        Request Match
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUsePartnerInfo(partner)}
+                      className="mt-4 w-full py-2.5 rounded-lg bg-[#10B981]/15 border border-[#10B981]/30 text-[#6EE7B7] font-semibold hover:bg-[#10B981]/25 transition-all"
+                    >
+                      Use This Partner Info
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+              </>
+            )}
+
+            {showMyRequests && (
+              <div className="mt-4 p-4 bg-[#1E293B] border border-[#334155] rounded-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-white font-semibold">My Ongoing Requests</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowMyRequests(false)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0F172A] border border-[#334155] text-gray-200 hover:border-[#4F46E5] text-xs transition-all"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    Back to Finder
+                  </button>
+                </div>
+
+                {myRequestsLoading ? (
+                  <div className="text-gray-300 text-sm flex items-center gap-2">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Loading your requests...
+                  </div>
+                ) : myPartnerRequests.length === 0 ? (
+                  <p className="text-gray-400 text-sm">No ongoing partner requests found.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {myPartnerRequests.map((request) => (
+                      <div key={request.requestId} className="p-3 rounded-lg border border-[#334155] bg-[#0F172A]">
+                        {editingRequestId === request.requestId ? (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={requestEditForm.pickupLocation}
+                              onChange={(e) => setRequestEditForm((prev) => ({ ...prev, pickupLocation: e.target.value }))}
+                              className="w-full h-10 px-3 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                              placeholder="Pickup"
+                            />
+                            <input
+                              type="text"
+                              value={requestEditForm.destinationLocation}
+                              onChange={(e) => setRequestEditForm((prev) => ({ ...prev, destinationLocation: e.target.value }))}
+                              className="w-full h-10 px-3 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                              placeholder="Destination"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="date"
+                                value={requestEditForm.date}
+                                onChange={(e) => setRequestEditForm((prev) => ({ ...prev, date: e.target.value }))}
+                                className="h-10 px-3 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                              />
+                              <select
+                                value={requestEditForm.time}
+                                onChange={(e) => setRequestEditForm((prev) => ({ ...prev, time: e.target.value }))}
+                                className="h-10 px-3 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                              >
+                                <option value="">Select Time</option>
+                                <option>08:00 AM</option>
+                                <option>09:00 AM</option>
+                                <option>10:00 AM</option>
+                                <option>11:00 AM</option>
+                                <option>12:00 PM</option>
+                                <option>01:00 PM</option>
+                                <option>02:00 PM</option>
+                                <option>03:00 PM</option>
+                                <option>04:00 PM</option>
+                                <option>05:00 PM</option>
+                                <option>06:00 PM</option>
+                                <option>07:00 PM</option>
+                                <option>08:00 PM</option>
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2 justify-end pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setEditingRequestId('')}
+                                className="px-3 py-1.5 text-xs rounded-md border border-[#334155] text-gray-300"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveMyRequest(request.requestId)}
+                                disabled={savingRequestId === request.requestId}
+                                className="px-3 py-1.5 text-xs rounded-md bg-[#10B981] text-white disabled:opacity-60"
+                              >
+                                {savingRequestId === request.requestId ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-sm text-gray-200 font-medium">
+                              {request.pickupLocation} to {request.destinationLocation}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {formatDate(request.departureTime)} at {request.timeLabel || formatTime(request.departureTime)}
+                            </p>
+                            <div className="mt-2 flex items-center justify-between">
+                              <p className="text-xs text-amber-300 uppercase tracking-wider">{request.status}</p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleFindPartnerForMyRequest(request)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-[#0EA5E9]/20 border border-[#0EA5E9]/50 text-[#7DD3FC] hover:bg-[#0EA5E9]/30"
+                                >
+                                  <Search className="w-3 h-3" />
+                                  Find Partner
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditMyRequest(request)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-[#334155] text-gray-200 hover:border-[#10B981]"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMyRequest(request.requestId)}
+                                  disabled={deletingRequestId === request.requestId}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-red-500/40 text-red-300 hover:bg-red-500/10 disabled:opacity-60"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  {deletingRequestId === request.requestId ? 'Deleting...' : 'Delete'}
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!showPartnerFinder && (
+        /* Results Section */
         <div className="max-w-2xl mx-auto mt-12 space-y-6">
           {bookingSuccess && (
             <div className="p-4 bg-[#10B981]/10 border border-[#10B981]/30 text-[#A7F3D0] text-sm rounded-xl">
@@ -635,6 +1514,7 @@ const HopperMode = () => {
                 </div>
                 )})}
         </div>
+              )}
     </div>
   );
 };

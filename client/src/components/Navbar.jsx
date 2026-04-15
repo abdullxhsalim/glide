@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, X, User, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, X, User, LogOut, LayoutDashboard, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -15,8 +16,15 @@ const Navbar = () => {
   };
 
   const handleLogout = () => {
+    setIsProfileMenuOpen(false);
     logout();
     navigate('/');
+    setIsMenuOpen(false);
+  };
+
+  const handleEditProfile = () => {
+    setIsProfileMenuOpen(false);
+    navigate('/dash', { state: { openEditProfile: true } });
     setIsMenuOpen(false);
   };
 
@@ -51,21 +59,39 @@ const Navbar = () => {
                 
                 <div className="h-6 w-px bg-gray-700"></div>
 
-                <div className="flex items-center gap-3 pl-2">
+                <div className="relative flex items-center gap-3 pl-2">
                   <div className="text-right hidden lg:block">
                     <p className="text-sm font-medium text-white">{user.name}</p>
                     <p className="text-xs text-gray-400">{getRoleLabel(user.role)}</p>
                   </div>
-                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white font-bold shadow-lg shadow-[#10B981]/20 ring-2 ring-[#1E293B]">
-                    {user.name ? user.name.charAt(0).toUpperCase() : <User className="w-5 h-5" />}
-                  </div>
-                  <button 
-                    onClick={handleLogout}
-                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-                    title="Log out"
+                  <button
+                    onClick={() => setIsProfileMenuOpen((prev) => !prev)}
+                    className="flex items-center gap-1.5 p-1 rounded-full hover:bg-white/10 transition-colors"
+                    title="Profile options"
                   >
-                    <LogOut className="w-5 h-5" />
+                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white font-bold shadow-lg shadow-[#10B981]/20 ring-2 ring-[#1E293B]">
+                      {user.name ? user.name.charAt(0).toUpperCase() : <User className="w-5 h-5" />}
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                   </button>
+
+                  {isProfileMenuOpen && (
+                    <div className="absolute right-0 top-12 w-44 bg-[#1E293B] border border-[#334155] rounded-xl shadow-2xl overflow-hidden z-50">
+                      <button
+                        onClick={handleEditProfile}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-[#334155]"
+                      >
+                        Edit Profile
+                      </button>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-[#334155] flex items-center gap-2"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Log out
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -124,6 +150,12 @@ const Navbar = () => {
                   >
                     Dashboard
                   </Link>
+                  <button
+                    onClick={handleEditProfile}
+                    className="w-full text-left text-gray-300 hover:text-white hover:bg-[#334155] block px-3 py-2 rounded-md text-base font-medium"
+                  >
+                    Edit Profile
+                  </button>
                   <button 
                     onClick={handleLogout}
                     className="w-full text-left text-gray-300 hover:text-white hover:bg-[#334155] block px-3 py-2 rounded-md text-base font-medium"

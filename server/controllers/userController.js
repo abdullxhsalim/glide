@@ -9,11 +9,16 @@ const generateToken = (id) => {
   });
 };
 
+const getResolvedContactNumber = (user) => {
+  if (!user) return '';
+  return user.contactNumber || user.phone || '';
+};
+
 // @desc    Register new user
 // @route   POST /api/users/register
 // @access  Public
 const registerUser = async (req, res) => {
-  const { name, email, studentId, password, role, vehicle } = req.body;
+  const { name, email, studentId, contactNumber, password, role, vehicle } = req.body;
 
   try {
     // 1. Basic Validation
@@ -60,6 +65,8 @@ const registerUser = async (req, res) => {
       name,
       email,
       studentId,
+      contactNumber: contactNumber || '',
+      phone: contactNumber || '',
       password: hashedPassword,
       role,
       isVerified: false // Default to false until verified
@@ -76,7 +83,11 @@ const registerUser = async (req, res) => {
         _id: user.id,
         name: user.name,
         email: user.email,
+        studentId: user.studentId,
+        contactNumber: getResolvedContactNumber(user),
         role: user.role,
+        isVerified: user.isVerified,
+        vehicle: user.vehicle,
         token: generateToken(user._id)
       });
     } else {
@@ -104,7 +115,11 @@ const loginUser = async (req, res) => {
         _id: user.id,
         name: user.name,
         email: user.email,
+        studentId: user.studentId,
+        contactNumber: getResolvedContactNumber(user),
         role: user.role,
+        isVerified: user.isVerified,
+        vehicle: user.vehicle,
         token: generateToken(user._id)
       });
     } else {
@@ -122,10 +137,111 @@ const loginUser = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     // req.user is set by auth middleware
-    const user = await User.findById(req.user.id).select('-password'); 
+    const user = await User.findById(req.user.id).select('-password');
+
+    if (user && !user.contactNumber && user.phone) {
+      user.contactNumber = user.phone;
+      await user.save();
+    }
+
     res.status(200).json(user);
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/users/me
+// @access  Private
+const updateMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { name, email, studentId, contactNumber, vehicle } = req.body;
+
+    if (name !== undefined) {
+      user.name = String(name).trim();
+    }
+
+    if (email !== undefined) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const emailOwner = await User.findOne({
+        email: normalizedEmail,
+        _id: { $ne: user._id }
+      });
+
+      if (emailOwner) {
+        return res.status(400).json({ message: 'User with this email already exists' });
+      }
+
+      user.email = normalizedEmail;
+    }
+
+    if (studentId !== undefined) {
+      const normalizedStudentId = String(studentId).trim();
+      const studentOwner = await User.findOne({
+        studentId: normalizedStudentId,
+        _id: { $ne: user._id }
+      });
+
+      if (studentOwner) {
+        return res.status(400).json({ message: 'User with this Student ID already exists' });
+      }
+
+      user.studentId = normalizedStudentId;
+    }
+
+    if (contactNumber !== undefined) {
+      const normalized = String(contactNumber).trim();
+      user.contactNumber = normalized;
+      user.phone = normalized;
+    }
+
+    if (vehicle && user.role === 'driver') {
+      const mergedVehicle = {
+        ...(user.vehicle ? user.vehicle.toObject ? user.vehicle.toObject() : user.vehicle : {}),
+        ...vehicle
+      };
+
+      if (mergedVehicle.licensePlate) {
+        const plateOwner = await User.findOne({
+          'vehicle.licensePlate': mergedVehicle.licensePlate,
+          _id: { $ne: user._id }
+        });
+
+        if (plateOwner) {
+          return res.status(400).json({ message: 'A vehicle with this license plate is already registered' });
+        }
+      }
+
+      user.vehicle = {
+        make: mergedVehicle.make,
+        model: mergedVehicle.model,
+        color: mergedVehicle.color,
+        licensePlate: mergedVehicle.licensePlate,
+        year: mergedVehicle.year
+      };
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      _id: user.id,
+      name: user.name,
+      email: user.email,
+      studentId: user.studentId,
+      contactNumber: getResolvedContactNumber(user),
+      role: user.role,
+      isVerified: user.isVerified,
+      vehicle: user.vehicle,
+      token: generateToken(user._id)
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
     res.status(500).json({ message: 'Server Error' });
   }
 };
@@ -171,6 +287,8 @@ const verifyVehicle = async (req, res) => {
       _id: user.id,
       name: user.name,
       email: user.email,
+      studentId: user.studentId,
+      contactNumber: getResolvedContactNumber(user),
       role: user.role,
       isVerified: user.isVerified,
       vehicle: user.vehicle,
@@ -186,5 +304,6 @@ module.exports = {
   registerUser,
   loginUser,
   getMe,
+  updateMe,
   verifyVehicle
 };

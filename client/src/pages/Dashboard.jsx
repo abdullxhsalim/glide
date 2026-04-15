@@ -1,12 +1,34 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SharerMode from './SharerMode';
 import HopperMode from './HopperMode';
 import Footer from '../components/Footer';
-import { Share2, Car } from 'lucide-react';
+import { Share2, Car, User, Phone, Save, X, Mail, Hash } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 
 const Dashboard = () => {
+  const location = useLocation();
+  const { login } = useAuth();
   const [activeMode, setActiveMode] = useState('hopper');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('userInfo')));
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    email: '',
+    studentId: '',
+    contactNumber: '',
+    role: 'rider',
+    vehicle: {
+      make: '',
+      model: '',
+      color: '',
+      licensePlate: '',
+      year: ''
+    }
+  });
   const [showVerifyVehicle, setShowVerifyVehicle] = useState(false);
   const [verifyingVehicle, setVerifyingVehicle] = useState(false);
   const [verifyError, setVerifyError] = useState('');
@@ -17,6 +39,36 @@ const Dashboard = () => {
     licensePlate: '',
     year: ''
   });
+
+  const buildProfileForm = (userData) => ({
+    name: userData?.name || '',
+    email: userData?.email || '',
+    studentId: userData?.studentId || '',
+    contactNumber: userData?.contactNumber || '',
+    role: userData?.role || 'rider',
+    vehicle: {
+      make: userData?.vehicle?.make || '',
+      model: userData?.vehicle?.model || '',
+      color: userData?.vehicle?.color || '',
+      licensePlate: userData?.vehicle?.licensePlate || '',
+      year: userData?.vehicle?.year || ''
+    }
+  });
+
+  useEffect(() => {
+    setProfileForm(buildProfileForm(user));
+  }, [user]);
+
+  useEffect(() => {
+    if (location.state?.openEditProfile) {
+      handleOpenEditProfile();
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (err) {
+        // Ignore history state reset errors in stricter browsers.
+      }
+    }
+  }, [location.state]);
 
   const handleSharerClick = () => {
     if (user?.role === 'driver') {
@@ -61,6 +113,7 @@ const Dashboard = () => {
 
       localStorage.setItem('userInfo', JSON.stringify(data));
       setUser(data);
+      login(data);
       setShowVerifyVehicle(false);
       setActiveMode('sharer');
     } catch (error) {
@@ -75,6 +128,112 @@ const Dashboard = () => {
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
+  };
+
+  const handleOpenEditProfile = async () => {
+    setProfileError('');
+    setProfileSuccess('');
+
+    const token = user?.token;
+    if (token) {
+      try {
+        const response = await fetch('/api/users/me', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const profileData = await response.json();
+          const mergedUser = { ...profileData, token };
+          localStorage.setItem('userInfo', JSON.stringify(mergedUser));
+          setUser(mergedUser);
+          login(mergedUser);
+          setProfileForm(buildProfileForm(mergedUser));
+        } else {
+          setProfileForm(buildProfileForm(user));
+          setProfileError('Could not refresh profile from server. Showing locally saved data.');
+        }
+      } catch (err) {
+        setProfileForm(buildProfileForm(user));
+        setProfileError('Could not refresh profile from server. Showing locally saved data.');
+      }
+    } else {
+      setProfileForm(buildProfileForm(user));
+      setProfileError('Please login again to load your latest profile.');
+    }
+
+    setShowEditProfile(true);
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileSuccess('');
+
+    const token = user?.token;
+    if (!token) {
+      setProfileError('Please login again to update your profile.');
+      return;
+    }
+
+    if (!profileForm.name.trim() || !profileForm.email.trim() || !profileForm.studentId.trim() || !profileForm.contactNumber.trim()) {
+      setProfileError('Name, email, student ID and contact number are required.');
+      return;
+    }
+
+    if (
+      profileForm.role === 'driver' &&
+      (!profileForm.vehicle.make.trim() ||
+        !profileForm.vehicle.model.trim() ||
+        !profileForm.vehicle.color.trim() ||
+        !profileForm.vehicle.licensePlate.trim())
+    ) {
+      setProfileError('For sharer profile, complete vehicle make, model, color and license plate.');
+      return;
+    }
+
+    try {
+      setProfileSaving(true);
+
+      const response = await fetch('/api/users/me', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: profileForm.name.trim(),
+          email: profileForm.email.trim(),
+          studentId: profileForm.studentId.trim(),
+          contactNumber: profileForm.contactNumber.trim(),
+          vehicle:
+            profileForm.role === 'driver'
+              ? {
+                  make: profileForm.vehicle.make.trim(),
+                  model: profileForm.vehicle.model.trim(),
+                  color: profileForm.vehicle.color.trim(),
+                  licensePlate: profileForm.vehicle.licensePlate.trim(),
+                  year: profileForm.vehicle.year ? Number(profileForm.vehicle.year) : undefined
+                }
+              : undefined
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update profile');
+      }
+
+      localStorage.setItem('userInfo', JSON.stringify(data));
+      setUser(data);
+      login(data);
+      setProfileSuccess('Profile updated successfully.');
+    } catch (error) {
+      setProfileError(error.message || 'Failed to update profile');
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   return (
@@ -126,6 +285,7 @@ const Dashboard = () => {
             </button>
           </div>
         </div>
+
       </div>
 
       {/* Main Content Area */}
@@ -228,6 +388,172 @@ const Dashboard = () => {
             </div>
          )}
       </div>
+
+      {showEditProfile && (
+        <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="w-full max-w-lg bg-[#1E293B] border border-[#334155] rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-bold text-white">Edit Profile</h2>
+              <button
+                type="button"
+                onClick={() => setShowEditProfile(false)}
+                className="p-2 rounded-full text-gray-300 hover:bg-[#334155]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProfile} className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Name</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, name: e.target.value }))}
+                    className="w-full h-11 pl-9 pr-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                    placeholder="Your name"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, email: e.target.value }))}
+                    className="w-full h-11 pl-9 pr-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                    placeholder="student@university.edu"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Student ID</label>
+                <div className="relative">
+                  <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={profileForm.studentId}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, studentId: e.target.value }))}
+                    className="w-full h-11 pl-9 pr-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                    placeholder="20XXXXXX"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Contact Number</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    value={profileForm.contactNumber}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, contactNumber: e.target.value }))}
+                    className="w-full h-11 pl-9 pr-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                    placeholder="01XXXXXXXXX"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Role</label>
+                <input
+                  type="text"
+                  value={profileForm.role === 'driver' ? 'Sharer' : 'Hopper'}
+                  readOnly
+                  className="w-full h-11 px-3 bg-[#0F172A] border border-[#334155] rounded-lg text-gray-300"
+                />
+              </div>
+
+              {profileForm.role === 'driver' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Vehicle Make</label>
+                    <input
+                      type="text"
+                      value={profileForm.vehicle.make}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, vehicle: { ...prev.vehicle, make: e.target.value } }))}
+                      className="w-full h-11 px-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                      placeholder="Toyota"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Vehicle Model</label>
+                    <input
+                      type="text"
+                      value={profileForm.vehicle.model}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, vehicle: { ...prev.vehicle, model: e.target.value } }))}
+                      className="w-full h-11 px-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                      placeholder="Corolla"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Color</label>
+                    <input
+                      type="text"
+                      value={profileForm.vehicle.color}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, vehicle: { ...prev.vehicle, color: e.target.value } }))}
+                      className="w-full h-11 px-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                      placeholder="White"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">License Plate</label>
+                    <input
+                      type="text"
+                      value={profileForm.vehicle.licensePlate}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, vehicle: { ...prev.vehicle, licensePlate: e.target.value } }))}
+                      className="w-full h-11 px-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                      placeholder="Dhaka Metro Ga-123456"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">Vehicle Year (Optional)</label>
+                    <input
+                      type="number"
+                      value={profileForm.vehicle.year}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, vehicle: { ...prev.vehicle, year: e.target.value } }))}
+                      className="w-full h-11 px-3 bg-[#0F172A] border border-[#334155] rounded-lg text-white"
+                      placeholder="2020"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {profileError && (
+                <div className="p-3 rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 text-sm">
+                  {profileError}
+                </div>
+              )}
+
+              {profileSuccess && (
+                <div className="p-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm">
+                  {profileSuccess}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={profileSaving}
+                className="w-full h-11 bg-[#10B981] hover:bg-[#059669] rounded-lg text-white font-semibold disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {profileSaving ? 'Saving...' : 'Save Profile'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
