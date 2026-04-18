@@ -1,23 +1,24 @@
 const Ride = require('../models/Ride');
 const PartnerRequest = require('../models/PartnerRequest');
+const Booking = require('../models/Booking');
 const decodePolyline = require('../utils/polyline');
 
 // Helper: Calculate distance between two points (Haversine formula)
 const getDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c; // Distance in km
-  return d;
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c; // Distance in km
+    return d;
 };
 
 const deg2rad = (deg) => {
-  return deg * (Math.PI / 180);
+    return deg * (Math.PI / 180);
 };
 
 // Helper: Find minimum distance from point to polyline (simplified as min distance to any vertex)
@@ -30,7 +31,7 @@ const minDistanceToPath = (pointLat, pointLng, pathCoordinates) => {
         const pLat = pathCoordinates[i][1];
         const pLng = pathCoordinates[i][0];
         const dist = getDistance(pointLat, pointLng, pLat, pLng);
-        
+
         if (dist < minArgs.dist) {
             minArgs = { dist, index: i };
         }
@@ -40,121 +41,152 @@ const minDistanceToPath = (pointLat, pointLng, pathCoordinates) => {
 
 
 const getRides = async (req, res) => {
-  try {
-    const { pickupLat, pickupLng, dropoffLat, dropoffLng, date, time, minDepartureTime, maxDepartureTime } = req.query;
+    try {
+        const { pickupLat, pickupLng, dropoffLat, dropoffLng, date, time, minDepartureTime, maxDepartureTime } = req.query;
 
-    let query = {
-      status: 'scheduled',
-    };
-
-    if (minDepartureTime || maxDepartureTime) {
-        query.departureTime = {};
-        if (minDepartureTime) query.departureTime.$gte = new Date(minDepartureTime);
-        if (maxDepartureTime) query.departureTime.$lte = new Date(maxDepartureTime);
-    } else if (date) {
-        let startOfRange = new Date(date);
-        startOfRange.setHours(0, 0, 0, 0);
-
-        if (time) {
-            const [timePart, modifier] = time.split(' ');
-            if (timePart && modifier) {
-                let [hours, minutes] = timePart.split(':');
-                hours = parseInt(hours, 10);
-                minutes = parseInt(minutes, 10);
-
-                if (hours === 12) {
-                    hours = 0; // 12 AM is 0 hours
-                }
-                if (modifier === 'PM') {
-                    hours += 12; // 1 PM is 13 hours, etc.
-                }
-                
-                startOfRange.setHours(hours, minutes, 0, 0);
-            }
-        }
-        
-        // End of the day is always 23:59:59
-        const endOfRange = new Date(date);
-        endOfRange.setHours(23, 59, 59, 999);
-        
-        query.departureTime = {
-            $gte: startOfRange,
-            $lte: endOfRange
+        let query = {
+            status: { $in: ['scheduled', 'in-progress'] },
         };
-    } else {
-        // Default: Only show future rides
-        query.departureTime = { $gte: new Date() };
+
+        if (minDepartureTime || maxDepartureTime) {
+            query.departureTime = {};
+            if (minDepartureTime) query.departureTime.$gte = new Date(minDepartureTime);
+            if (maxDepartureTime) query.departureTime.$lte = new Date(maxDepartureTime);
+        } else if (date) {
+            let startOfRange = new Date(date);
+            startOfRange.setHours(0, 0, 0, 0);
+
+            if (time) {
+                const [timePart, modifier] = time.split(' ');
+                if (timePart && modifier) {
+                    let [hours, minutes] = timePart.split(':');
+                    hours = parseInt(hours, 10);
+                    minutes = parseInt(minutes, 10);
+
+                    if (hours === 12) {
+                        hours = 0; // 12 AM is 0 hours
+                    }
+                    if (modifier === 'PM') {
+                        hours += 12; // 1 PM is 13 hours, etc.
+                    }
+
+                    startOfRange.setHours(hours, minutes, 0, 0);
+                }
+            }
+
+            // End of the day is always 23:59:59
+            const endOfRange = new Date(date);
+            endOfRange.setHours(23, 59, 59, 999);
+
+            query.departureTime = {
+                $gte: startOfRange,
+                $lte: endOfRange
+            };
+        } else {
+            // Default: Only show future rides
+            query.departureTime = { $gte: new Date() };
+        }
+
+        const rides = await Ride.find(query)
+            .populate('driver', 'name rating vehicle')
+            .sort({ departureTime: 1 });
+
+        console.log('DEBUG: Fetched rides from DB:');
+        rides.forEach((ride, idx) => {
+            console.log(`  Ride ${idx}: origin.placeName=${ride.origin?.placeName}, preferences=${JSON.stringify(ride.preferences)}`);
+        });
+
+        // Ensure all rides have complete preferences object with defaults for existing rides
+        const defaultPreferences = {
+            smoking: false,
+            music: true,
+            ac: true,
+            quietPayload: false,
+            pets: false,
+            expressway: false,
+            multipleStoppages: false
+        };
+
+        const ridesWithPreferences = rides.map(ride => {
+            const rideObj = ride.toObject ? ride.toObject() : ride;
+            rideObj.preferences = { ...defaultPreferences, ...(ride.preferences || {}) };
+            return rideObj;
+        });
+
+        let filteredRides = ridesWithPreferences;
+
+        if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+            const pLat = parseFloat(pickupLat);
+            const pLng = parseFloat(pickupLng);
+            const dLat = parseFloat(dropoffLat);
+            const dLng = parseFloat(dropoffLng);
+            const MAX_DETOUR_KM = 3.5;
+
+            console.log(`Filtering rides for Pickup: ${pLat}, ${pLng} | Dropoff: ${dLat}, ${dLng}`);
+
+            filteredRides = ridesWithPreferences.filter(ride => {
+                if (!ride.path || !ride.path.coordinates || ride.path.coordinates.length < 2) {
+                    console.log(`Ride ${ride._id} skipped: No path data`);
+                    return false;
+                }
+
+                const pickupMatch = minDistanceToPath(pLat, pLng, ride.path.coordinates);
+                if (pickupMatch.dist > MAX_DETOUR_KM) {
+                    console.log(`Ride ${ride._id} skipped: Pickup too far (${pickupMatch.dist.toFixed(2)}km)`);
+                    return false;
+                }
+
+                const dropoffMatch = minDistanceToPath(dLat, dLng, ride.path.coordinates);
+                if (dropoffMatch.dist > MAX_DETOUR_KM) {
+                    console.log(`Ride ${ride._id} skipped: Dropoff too far (${dropoffMatch.dist.toFixed(2)}km)`);
+                    return false;
+                }
+
+                if (pickupMatch.index >= dropoffMatch.index) {
+                    console.log(`Ride ${ride._id} skipped: Wrong direction (Pickup Idx: ${pickupMatch.index}, Dropoff Idx: ${dropoffMatch.index})`);
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        if (!req.user || req.user.role !== 'driver') {
+            const rideIds = filteredRides.map((ride) => ride._id);
+            const acceptedBookings = await Booking.find({
+                ride: { $in: rideIds },
+                status: 'accepted'
+            }).select('ride rider');
+
+            const acceptedByRideId = acceptedBookings.reduce((acc, booking) => {
+                const rideId = booking.ride.toString();
+                if (!acc[rideId]) {
+                    acc[rideId] = new Set();
+                }
+                acc[rideId].add(booking.rider.toString());
+                return acc;
+            }, {});
+
+            const currentUserId = req.user.id.toString();
+
+            filteredRides = filteredRides.filter((ride) => {
+                const acceptedRiders = acceptedByRideId[ride._id.toString()];
+
+                // If no accepted rider yet, keep the ride public.
+                if (!acceptedRiders || acceptedRiders.size === 0) {
+                    return ride.status === 'scheduled';
+                }
+
+                // Once a ride has accepted rider(s), only those riders can see it.
+                return acceptedRiders.has(currentUserId);
+            });
+        }
+
+        res.json(filteredRides);
+    } catch (error) {
+        console.error('Error fetching rides:', error);
+        res.status(500).json({ message: 'Server Error' });
     }
-    
-    const rides = await Ride.find(query)
-      .populate('driver', 'name rating vehicle')
-      .sort({ departureTime: 1 });
-
-    console.log('DEBUG: Fetched rides from DB:');
-    rides.forEach((ride, idx) => {
-      console.log(`  Ride ${idx}: origin.placeName=${ride.origin?.placeName}, preferences=${JSON.stringify(ride.preferences)}`);
-    });
-
-    // Ensure all rides have complete preferences object with defaults for existing rides
-    const defaultPreferences = {
-        smoking: false,
-        music: true,
-        ac: true,
-        quietPayload: false,
-        pets: false,
-        expressway: false,
-        multipleStoppages: false
-    };
-
-    const ridesWithPreferences = rides.map(ride => {
-        const rideObj = ride.toObject ? ride.toObject() : ride;
-        rideObj.preferences = { ...defaultPreferences, ...(ride.preferences || {}) };
-        return rideObj;
-    });
-
-    let filteredRides = ridesWithPreferences;
-
-    if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
-       const pLat = parseFloat(pickupLat);
-       const pLng = parseFloat(pickupLng);
-       const dLat = parseFloat(dropoffLat);
-       const dLng = parseFloat(dropoffLng);
-       const MAX_DETOUR_KM = 3.5; 
-
-       console.log(`Filtering rides for Pickup: ${pLat}, ${pLng} | Dropoff: ${dLat}, ${dLng}`);
-
-       filteredRides = ridesWithPreferences.filter(ride => {
-           if (!ride.path || !ride.path.coordinates || ride.path.coordinates.length < 2) {
-               console.log(`Ride ${ride._id} skipped: No path data`);
-               return false;
-           }
-
-           const pickupMatch = minDistanceToPath(pLat, pLng, ride.path.coordinates);
-           if (pickupMatch.dist > MAX_DETOUR_KM) {
-               console.log(`Ride ${ride._id} skipped: Pickup too far (${pickupMatch.dist.toFixed(2)}km)`);
-               return false;
-           }
-
-           const dropoffMatch = minDistanceToPath(dLat, dLng, ride.path.coordinates);
-           if (dropoffMatch.dist > MAX_DETOUR_KM) {
-               console.log(`Ride ${ride._id} skipped: Dropoff too far (${dropoffMatch.dist.toFixed(2)}km)`);
-               return false;
-           }
-
-           if (pickupMatch.index >= dropoffMatch.index) {
-                console.log(`Ride ${ride._id} skipped: Wrong direction (Pickup Idx: ${pickupMatch.index}, Dropoff Idx: ${dropoffMatch.index})`);
-                return false;
-           }
-
-           return true; 
-       });
-    }
-
-    res.json(filteredRides);
-  } catch (error) {
-    console.error('Error fetching rides:', error);
-    res.status(500).json({ message: 'Server Error' });
-  }
 };
 
 // @desc    Find ride partners around same route/time
@@ -551,16 +583,16 @@ const createRide = async (req, res) => {
             routeData: routeData || {},
             path: routePath.coordinates.length > 0 ? routePath : undefined, // Save GeoJSON path for spatial queries
             // Calculate a baseline price for sorting/display purposes (e.g. if car is full)
-            pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)), 
+            pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)),
             preferences: mergedPreferences,
             vehicle: vehicle || req.user.vehicle // Use user's vehicle if not specified
         });
 
         console.log('DEBUG: Ride created:', {
-          originPlaceName: ride.origin?.placeName,
-          originAddress: ride.origin?.address,
-          destPlaceName: ride.destination?.placeName,
-          destAddress: ride.destination?.address
+            originPlaceName: ride.origin?.placeName,
+            originAddress: ride.origin?.address,
+            destPlaceName: ride.destination?.placeName,
+            destAddress: ride.destination?.address
         });
 
         res.status(201).json(ride);
@@ -650,12 +682,12 @@ const deleteMyRide = async (req, res) => {
 };
 
 module.exports = {
-  getRides,
+    getRides,
     findPartners,
-        createPartnerRequest,
-        getMyPartnerRequests,
-                updateMyPartnerRequest,
-                deleteMyPartnerRequest,
+    createPartnerRequest,
+    getMyPartnerRequests,
+    updateMyPartnerRequest,
+    deleteMyPartnerRequest,
     createRide,
     getMyRides,
     updateMyRide,
