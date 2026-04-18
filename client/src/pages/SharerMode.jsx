@@ -9,24 +9,24 @@ const LIBRARIES = ['places', 'geometry'];
 
 // Progress Bar Component
 const ProgressBar = ({ step, totalSteps }) => (
-    <div className="w-full mb-8">
-        <div className="flex justify-between mb-2 px-1">
-            {Array.from({ length: totalSteps }).map((_, idx) => (
-                <div 
-                    key={idx} 
-                    className={`text-xs font-bold uppercase tracking-wider ${step > idx + 1 ? 'text-[#10B981]' : step === idx + 1 ? 'text-[#4F46E5]' : 'text-slate-600'}`}
-                >
-                    Step {idx + 1}
-                </div>
-            ))}
+  <div className="w-full mb-8">
+    <div className="flex justify-between mb-2 px-1">
+      {Array.from({ length: totalSteps }).map((_, idx) => (
+        <div
+          key={idx}
+          className={`text-xs font-bold uppercase tracking-wider ${step > idx + 1 ? 'text-[#10B981]' : step === idx + 1 ? 'text-[#4F46E5]' : 'text-slate-600'}`}
+        >
+          Step {idx + 1}
         </div>
-        <div className="h-2 bg-[#334155] rounded-full overflow-hidden">
-            <div
-                className="h-full bg-gradient-to-r from-[#4F46E5] to-[#10B981] transition-all duration-300 ease-in-out"
-                style={{ width: `${(step / totalSteps) * 100}%` }}
-            />
-        </div>
+      ))}
     </div>
+    <div className="h-2 bg-[#334155] rounded-full overflow-hidden">
+      <div
+        className="h-full bg-gradient-to-r from-[#4F46E5] to-[#10B981] transition-all duration-300 ease-in-out"
+        style={{ width: `${(step / totalSteps) * 100}%` }}
+      />
+    </div>
+  </div>
 );
 
 const SharerMode = () => {
@@ -49,6 +49,7 @@ const SharerMode = () => {
   const [driverRides, setDriverRides] = useState([]);
   const [editRideId, setEditRideId] = useState('');
   const [savingRide, setSavingRide] = useState(false);
+  const [startingRideId, setStartingRideId] = useState('');
   const [deletingRideId, setDeletingRideId] = useState('');
   const [driverBookings, setDriverBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
@@ -65,7 +66,7 @@ const SharerMode = () => {
     multipleStoppages: false,
     expressway: false
   });
-  
+
   // Keep track of full location objects { name, address, lat, lng }
   const [originLocation, setOriginLocation] = useState(null);
   const [destLocation, setDestLocation] = useState(null);
@@ -235,10 +236,10 @@ const SharerMode = () => {
           prev.map((ride) =>
             ride._id === data.ride._id
               ? {
-                  ...ride,
-                  seatsBooked: data.ride.seatsBooked,
-                  seatsTotal: data.ride.seatsTotal
-                }
+                ...ride,
+                seatsBooked: data.ride.seatsBooked,
+                seatsTotal: data.ride.seatsTotal
+              }
               : ride
           )
         );
@@ -378,6 +379,43 @@ const SharerMode = () => {
     }
   };
 
+  const handleStartRide = async (rideId) => {
+    const token = getToken();
+    if (!token) {
+      setRidesError('Please log in again to manage your rides.');
+      return;
+    }
+
+    setStartingRideId(rideId);
+    setRidesError('');
+
+    try {
+      const response = await fetch(`/api/rides/${rideId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: 'in-progress' })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to start ride');
+      }
+
+      setDriverRides((prev) => prev.map((ride) => (ride._id === rideId ? data : ride)));
+
+      if (editRideId === rideId) {
+        setEditForm((prev) => ({ ...prev, status: 'in-progress' }));
+      }
+    } catch (err) {
+      setRidesError(err.message || 'Failed to start ride');
+    } finally {
+      setStartingRideId('');
+    }
+  };
+
   useEffect(() => {
     if (activeSharerPanel === 'manage') {
       loadMyRides();
@@ -392,23 +430,23 @@ const SharerMode = () => {
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          
+
           // Reverse Geocoding (using Google Maps Geocoder)
           if (isLoaded && window.google) {
-             const geocoder = new window.google.maps.Geocoder();
-             geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-                if (status === "OK" && results[0]) {
-                    const address = results[0].formatted_address;
-                  const name = getGeocoderName(results[0]) || address;
-                  setFormData(prev => ({ ...prev, origin: name }));
-                  setOriginLocation({ name, address, lat, lng });
-                } else {
-                    // Fallback if address not found
-                    const locStr = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-                    setFormData(prev => ({ ...prev, origin: locStr }));
-                  setOriginLocation({ name: locStr, address: locStr, lat, lng });
-                }
-             });
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+              if (status === "OK" && results[0]) {
+                const address = results[0].formatted_address;
+                const name = getGeocoderName(results[0]) || address;
+                setFormData(prev => ({ ...prev, origin: name }));
+                setOriginLocation({ name, address, lat, lng });
+              } else {
+                // Fallback if address not found
+                const locStr = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                setFormData(prev => ({ ...prev, origin: locStr }));
+                setOriginLocation({ name: locStr, address: locStr, lat, lng });
+              }
+            });
           }
         },
         (err) => {
@@ -424,7 +462,7 @@ const SharerMode = () => {
   // Calculate Estimation whenever relevant fields change
   const calculateEstimation = useCallback(async () => {
     if (!originLocation || !destLocation) return;
-    
+
     setCalculating(true);
     try {
       // 1. Get Coordinates directly from state objects
@@ -434,7 +472,7 @@ const SharerMode = () => {
 
       // 2. Fetch Route Data
       const routeData = await getRouteDetails(originCoords, destCoords);
-      
+
       let distanceKm = 0;
       let geometry = null;
       let duration = 0;
@@ -479,24 +517,24 @@ const SharerMode = () => {
   // Trigger calculation when inputs change
   useEffect(() => {
     const timer = setTimeout(() => {
-        calculateEstimation();
-    }, 800); 
+      calculateEstimation();
+    }, 800);
     return () => clearTimeout(timer);
   }, [calculateEstimation]);
 
 
   const handleChange = (e) => {
-      // For regular inputs (not location)
-      setFormData({ ...formData, [e.target.name]: e.target.value });
+    // For regular inputs (not location)
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
-  
+
   const handleLocationChange = (field, value) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
-      // Use map logic to clear coordinate if user clears text? 
-      if (value === '') {
-          if (field === 'origin') setOriginLocation(null);
-          if (field === 'destination') setDestLocation(null);
-      }
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Use map logic to clear coordinate if user clears text? 
+    if (value === '') {
+      if (field === 'origin') setOriginLocation(null);
+      if (field === 'destination') setDestLocation(null);
+    }
   };
 
   const syncTimeToFormData = (parts) => {
@@ -519,60 +557,60 @@ const SharerMode = () => {
   };
 
   const handlePlaceSelected = (field, placeData) => {
-      setFormData(prev => ({ ...prev, [field]: placeData.name || placeData.address }));
-      if (field === 'origin') setOriginLocation(placeData);
-      if (field === 'destination') setDestLocation(placeData);
+    setFormData(prev => ({ ...prev, [field]: placeData.name || placeData.address }));
+    if (field === 'origin') setOriginLocation(placeData);
+    if (field === 'destination') setDestLocation(placeData);
   };
-  
+
   // Logic to allow pinning on map (basic implementation: toggle which one to set?)
   // For now, let's just say clicking map updates DESTINATION if Origin is set, or Origin if not?
   // Keeping it simple: If Origin is empty, set Origin. If Origin set, set Destination.
   const handleMapClick = (e) => {
-      if (!isLoaded || !window.google) return;
-      
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
-      
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-          if (status === "OK" && results[0]) {
-              const address = results[0].formatted_address;
-              const name = getGeocoderName(results[0]) || address;
-              const locData = { name, address, lat, lng };
-              
-              if (!originLocation) {
-                  setOriginLocation(locData);
-                setFormData(prev => ({ ...prev, origin: name }));
-              } else {
-                  setDestLocation(locData);
-                setFormData(prev => ({ ...prev, destination: name }));
-              }
-          }
-      });
+    if (!isLoaded || !window.google) return;
+
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === "OK" && results[0]) {
+        const address = results[0].formatted_address;
+        const name = getGeocoderName(results[0]) || address;
+        const locData = { name, address, lat, lng };
+
+        if (!originLocation) {
+          setOriginLocation(locData);
+          setFormData(prev => ({ ...prev, origin: name }));
+        } else {
+          setDestLocation(locData);
+          setFormData(prev => ({ ...prev, destination: name }));
+        }
+      }
+    });
   };
 
   const handleNext = () => {
-      if (step === 1 && (!originLocation || !destLocation)) {
-          setError("Please select both Origin and Destination");
-          return;
-      }
-      if (step === 2 && (!formData.date || !formData.time)) {
-          setError("Please select Date and Time");
-          return;
-      }
-      // Step 3 validation is handled by min/max inputs mostly, but ensure they are filled
-      if (step === 3 && (!formData.seatsTotal || !formData.mileage)) {
-          setError("Please fill all vehicle details");
-          return;
-      }
+    if (step === 1 && (!originLocation || !destLocation)) {
+      setError("Please select both Origin and Destination");
+      return;
+    }
+    if (step === 2 && (!formData.date || !formData.time)) {
+      setError("Please select Date and Time");
+      return;
+    }
+    // Step 3 validation is handled by min/max inputs mostly, but ensure they are filled
+    if (step === 3 && (!formData.seatsTotal || !formData.mileage)) {
+      setError("Please fill all vehicle details");
+      return;
+    }
 
-      setError('');
-      setStep(prev => prev + 1);
+    setError('');
+    setStep(prev => prev + 1);
   };
 
   const handleBack = () => {
-      setError('');
-      setStep(prev => prev - 1);
+    setError('');
+    setStep(prev => prev - 1);
   };
 
   const handleSubmit = async (e) => {
@@ -585,7 +623,7 @@ const SharerMode = () => {
       if (!userInfo || !userInfo.token) {
         throw new Error('You must be logged in to post a ride.');
       }
-      
+
       if (step < totalSteps) {
         handleNext();
         return;
@@ -596,7 +634,7 @@ const SharerMode = () => {
       }
 
       if (rideMetrics.totalCost <= 0) {
-          throw new Error('Could not calculate ride cost. Please check locations.');
+        throw new Error('Could not calculate ride cost. Please check locations.');
       }
 
       // Construct Departure Time
@@ -620,9 +658,9 @@ const SharerMode = () => {
         seatsTotal: parseInt(formData.seatsTotal),
         totalFuelCost: rideMetrics.totalCost,
         routeData: {
-            distanceKm: rideMetrics.distanceKm,
-            durationMin: rideMetrics.durationMin,
-            geometry: rideMetrics.routeGeometry
+          distanceKm: rideMetrics.distanceKm,
+          durationMin: rideMetrics.durationMin,
+          geometry: rideMetrics.routeGeometry
         },
         preferences: {
           smoking: false,
@@ -703,9 +741,8 @@ const SharerMode = () => {
           <button
             type="button"
             onClick={() => setActiveSharerPanel('publish')}
-            className={`h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
-              activeSharerPanel === 'publish' ? 'bg-[#4F46E5] text-white shadow-lg shadow-[#4F46E5]/20' : 'text-gray-300 hover:bg-[#1E293B]'
-            }`}
+            className={`h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${activeSharerPanel === 'publish' ? 'bg-[#4F46E5] text-white shadow-lg shadow-[#4F46E5]/20' : 'text-gray-300 hover:bg-[#1E293B]'
+              }`}
           >
             <PlusCircle className="w-4 h-4" />
             Publish Ride
@@ -713,9 +750,8 @@ const SharerMode = () => {
           <button
             type="button"
             onClick={() => setActiveSharerPanel('manage')}
-            className={`h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
-              activeSharerPanel === 'manage' ? 'bg-[#10B981] text-white shadow-lg shadow-[#10B981]/20' : 'text-gray-300 hover:bg-[#1E293B]'
-            }`}
+            className={`h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${activeSharerPanel === 'manage' ? 'bg-[#10B981] text-white shadow-lg shadow-[#10B981]/20' : 'text-gray-300 hover:bg-[#1E293B]'
+              }`}
           >
             <ListChecks className="w-4 h-4" />
             My Published Rides
@@ -732,19 +768,19 @@ const SharerMode = () => {
               </div>
               <h2 className="text-3xl font-bold text-white">Ride Created Successfully!</h2>
               <div className="mt-8 p-6 bg-[#1E293B] rounded-2xl inline-block text-left min-w-[300px] border border-[#334155]">
-                  <div className="flex justify-between items-center mb-2">
-                      <span className="text-gray-400">Total Distance</span>
-                      <span className="text-white font-bold">{rideMetrics.distanceKm} km</span>
-                  </div>
-                  <div className="flex justify-between items-center mb-2">
-                      <span className="text-gray-400">Duration</span>
-                      <span className="text-white font-bold">~{rideMetrics.durationMin} mins</span>
-                  </div>
-                  <div className="h-px bg-[#334155] my-3"></div>
-                  <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Estimated Fuel Cost</span>
-                      <span className="text-[#10B981] font-bold text-lg">৳{rideMetrics.totalCost}</span>
-                  </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-gray-400">Total Distance</span>
+                  <span className="text-white font-bold">{rideMetrics.distanceKm} km</span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-gray-400">Duration</span>
+                  <span className="text-white font-bold">~{rideMetrics.durationMin} mins</span>
+                </div>
+                <div className="h-px bg-[#334155] my-3"></div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400">Estimated Fuel Cost</span>
+                  <span className="text-[#10B981] font-bold text-lg">৳{rideMetrics.totalCost}</span>
+                </div>
               </div>
               <p className="text-gray-400 text-lg mt-6">We will notify you when someone requests to join.</p>
               <button
@@ -764,13 +800,13 @@ const SharerMode = () => {
           ) : (
             <div>
               <div className="mb-6 flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-white">
-                      {step === 1 && "Start & Destination"}
-                      {step === 2 && "Time & Date"}
-                      {step === 3 && "Vehicle & Fuel"}
-                      {step === 4 && "Review & Confirm"}
-                  </h2>
-                  <span className="text-sm text-gray-400 font-medium">Step {step} of {totalSteps}</span>
+                <h2 className="text-2xl font-bold text-white">
+                  {step === 1 && "Start & Destination"}
+                  {step === 2 && "Time & Date"}
+                  {step === 3 && "Vehicle & Fuel"}
+                  {step === 4 && "Review & Confirm"}
+                </h2>
+                <span className="text-sm text-gray-400 font-medium">Step {step} of {totalSteps}</span>
               </div>
 
               <ProgressBar step={step} totalSteps={totalSteps} />
@@ -783,225 +819,225 @@ const SharerMode = () => {
               )}
 
               <form onSubmit={handleSubmit}>
-              
-              {/* Step 1: Route */}
-              {step === 1 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="grid grid-cols-1 gap-5">
-                    <div className="flex gap-2 items-end">
+
+                {/* Step 1: Route */}
+                {step === 1 && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="grid grid-cols-1 gap-5">
+                      <div className="flex gap-2 items-end">
                         <div className="flex-grow">
-                            <GoogleLocationInput
-                                label="Starting Point"
-                                value={formData.origin}
-                                onChange={(val) => handleLocationChange('origin', val)}
-                                onPlaceSelected={(place) => handlePlaceSelected('origin', place)}
-                                isLoaded={isLoaded}
-                                placeholder="Search starting point..."
-                                icon={MapPin}
-                            />
-                        </div>
-                        <button 
-                            type="button" 
-                            onClick={handleUseMyLocation}
-                            className="bg-[#1E293B] border border-[#334155] h-[52px] w-[52px] rounded-xl flex items-center justify-center hover:bg-[#334155] hover:border-[#4F46E5] transition-all mb-[1px]"
-                            title="Use Current Location"
-                        >
-                            <Locate className="text-[#4F46E5] w-5 h-5" />
-                        </button>
-                    </div>
-                    
-                    <div>
-                        <GoogleLocationInput
-                            label="Destination"
-                            value={formData.destination}
-                            onChange={(val) => handleLocationChange('destination', val)}
-                            onPlaceSelected={(place) => handlePlaceSelected('destination', place)}
+                          <GoogleLocationInput
+                            label="Starting Point"
+                            value={formData.origin}
+                            onChange={(val) => handleLocationChange('origin', val)}
+                            onPlaceSelected={(place) => handlePlaceSelected('origin', place)}
                             isLoaded={isLoaded}
-                            placeholder="Search destination..."
+                            placeholder="Search starting point..."
                             icon={MapPin}
-                        />
-                    </div>
-                  </div>
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleUseMyLocation}
+                          className="bg-[#1E293B] border border-[#334155] h-[52px] w-[52px] rounded-xl flex items-center justify-center hover:bg-[#334155] hover:border-[#4F46E5] transition-all mb-[1px]"
+                          title="Use Current Location"
+                        >
+                          <Locate className="text-[#4F46E5] w-5 h-5" />
+                        </button>
+                      </div>
 
-                  <div className="rounded-xl overflow-hidden border border-[#334155] h-[300px]">
-                    <div className="absolute top-4 right-4 z-10 bg-[#1E293B]/80 backdrop-blur px-3 py-1 rounded-full border border-[#334155] text-xs text-gray-300">
-                        { !originLocation ? "Click map to set Origin" : !destLocation ? "Click map to set Destination" : "Route Preview"}
-                    </div>
-                    <RouteMap 
-                      origin={originLocation ? [originLocation.lng, originLocation.lat] : null}
-                      destination={destLocation ? [destLocation.lng, destLocation.lat] : null}
-                      geometry={rideMetrics.routeGeometry}
-                      isLoaded={isLoaded}
-                      onMapClick={handleMapClick}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Step 2: Schedule */}
-              {step === 2 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-2">Date of Journey</label>
-                      <div className="relative">
-                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
-                        <input 
-                          type="date"
-                          name="date"
-                          value={formData.date}
-                          onChange={handleChange}
-                          required
-                          className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                      <div>
+                        <GoogleLocationInput
+                          label="Destination"
+                          value={formData.destination}
+                          onChange={(val) => handleLocationChange('destination', val)}
+                          onPlaceSelected={(place) => handlePlaceSelected('destination', place)}
+                          isLoaded={isLoaded}
+                          placeholder="Search destination..."
+                          icon={MapPin}
                         />
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-400 mb-2">Departure Time</label>
-                      <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+                    <div className="rounded-xl overflow-hidden border border-[#334155] h-[300px]">
+                      <div className="absolute top-4 right-4 z-10 bg-[#1E293B]/80 backdrop-blur px-3 py-1 rounded-full border border-[#334155] text-xs text-gray-300">
+                        {!originLocation ? "Click map to set Origin" : !destLocation ? "Click map to set Destination" : "Route Preview"}
+                      </div>
+                      <RouteMap
+                        origin={originLocation ? [originLocation.lng, originLocation.lat] : null}
+                        destination={destLocation ? [destLocation.lng, destLocation.lat] : null}
+                        geometry={rideMetrics.routeGeometry}
+                        isLoaded={isLoaded}
+                        onMapClick={handleMapClick}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2: Schedule */}
+                {step === 2 && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Date of Journey</label>
                         <div className="relative">
-                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" />
+                          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
+                          <input
+                            type="date"
+                            name="date"
+                            value={formData.date}
+                            onChange={handleChange}
+                            required
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Departure Time</label>
+                        <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" />
+                            <input
+                              type="number"
+                              min="1"
+                              max="12"
+                              placeholder="HH"
+                              value={timeParts.hour}
+                              onChange={(e) => handleTimePartChange('hour', e.target.value)}
+                              required
+                              className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-10 pr-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                            />
+                          </div>
+                          <div>
+                            <input
+                              type="number"
+                              min="0"
+                              max="59"
+                              placeholder="MM"
+                              value={timeParts.minute}
+                              onChange={(e) => handleTimePartChange('minute', e.target.value)}
+                              required
+                              className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                            />
+                          </div>
+                          <div>
+                            <select
+                              value={timeParts.period}
+                              onChange={(e) => handleTimePartChange('period', e.target.value)}
+                              className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                            >
+                              <option value="AM">AM</option>
+                              <option value="PM">PM</option>
+                            </select>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">Use the up/down arrows to set hour and minute.</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-[#334155] pt-6">
+                      <h3 className="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wide">Journey Preferences</h3>
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-3 p-3 bg-[#1E293B]/50 border border-[#334155] rounded-lg hover:bg-[#1E293B] hover:border-[#4F46E5] cursor-pointer transition-all group">
+                          <input
+                            type="checkbox"
+                            name="multipleStoppages"
+                            checked={formData.multipleStoppages}
+                            onChange={(e) => setFormData({ ...formData, multipleStoppages: e.target.checked })}
+                            className="w-5 h-5 rounded cursor-pointer accent-[#4F46E5]"
+                          />
+                          <div className="flex-1">
+                            <p className="text-white font-medium group-hover:text-[#4F46E5] transition-colors">Multiple Stoppages</p>
+                            <p className="text-xs text-gray-500">I'm willing to make stops along the way</p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-3 p-3 bg-[#1E293B]/50 border border-[#334155] rounded-lg hover:bg-[#1E293B] hover:border-[#4F46E5] cursor-pointer transition-all group">
+                          <input
+                            type="checkbox"
+                            name="expressway"
+                            checked={formData.expressway}
+                            onChange={(e) => setFormData({ ...formData, expressway: e.target.checked })}
+                            className="w-5 h-5 rounded cursor-pointer accent-[#4F46E5]"
+                          />
+                          <div className="flex-1">
+                            <p className="text-white font-medium group-hover:text-[#4F46E5] transition-colors">Expressway Tolls</p>
+                            <p className="text-xs text-gray-500">I plan to use expressway routes (toll charges apply)</p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Vehicle & Fuel */}
+                {step === 3 && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Seats Available</label>
+                        <div className="relative">
+                          <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
                           <input
                             type="number"
+                            name="seatsTotal"
+                            value={formData.seatsTotal}
+                            onChange={handleChange}
+                            placeholder="3"
                             min="1"
-                            max="12"
-                            placeholder="HH"
-                            value={timeParts.hour}
-                            onChange={(e) => handleTimePartChange('hour', e.target.value)}
+                            max="6"
                             required
-                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-10 pr-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
                           />
                         </div>
-                        <div>
-                          <input
-                            type="number"
-                            min="0"
-                            max="59"
-                            placeholder="MM"
-                            value={timeParts.minute}
-                            onChange={(e) => handleTimePartChange('minute', e.target.value)}
-                            required
-                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
-                          />
-                        </div>
-                        <div>
+                        <p className="text-xs text-gray-500 mt-2">Maximum 6 seats allowed.</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Fuel Type</label>
+                        <div className="relative">
+                          <Fuel className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
                           <select
-                            value={timeParts.period}
-                            onChange={(e) => handleTimePartChange('period', e.target.value)}
-                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-3 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                            name="fuelType"
+                            value={formData.fuelType}
+                            onChange={handleChange}
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none text-sm transition-all"
                           >
-                            <option value="AM">AM</option>
-                            <option value="PM">PM</option>
+                            <option value="octane">Octane (৳130/L)</option>
+                            <option value="petrol">Petrol (৳125/L)</option>
+                            <option value="diesel">Diesel (৳109/L)</option>
+                            <option value="brid">Hybrid (৳130/L)</option>
+                            <option value="cng">CNG (৳43/unit)</option>
                           </select>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500 mt-2">Use the up/down arrows to set hour and minute.</p>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Vehicle Mileage (km/L)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 z-10 text-xs font-bold">KM</span>
+                          <input
+                            type="number"
+                            name="mileage"
+                            value={formData.mileage}
+                            onChange={handleChange}
+                            placeholder="12"
+                            min="1"
+                            max="50"
+                            required
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">Average mileage of your car in city traffic.</p>
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  <div className="border-t border-[#334155] pt-6">
-                    <h3 className="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wide">Journey Preferences</h3>
-                    <div className="space-y-3">
-                      <label className="flex items-center gap-3 p-3 bg-[#1E293B]/50 border border-[#334155] rounded-lg hover:bg-[#1E293B] hover:border-[#4F46E5] cursor-pointer transition-all group">
-                        <input
-                          type="checkbox"
-                          name="multipleStoppages"
-                          checked={formData.multipleStoppages}
-                          onChange={(e) => setFormData({ ...formData, multipleStoppages: e.target.checked })}
-                          className="w-5 h-5 rounded cursor-pointer accent-[#4F46E5]"
-                        />
-                        <div className="flex-1">
-                          <p className="text-white font-medium group-hover:text-[#4F46E5] transition-colors">Multiple Stoppages</p>
-                          <p className="text-xs text-gray-500">I'm willing to make stops along the way</p>
-                        </div>
-                      </label>
-
-                      <label className="flex items-center gap-3 p-3 bg-[#1E293B]/50 border border-[#334155] rounded-lg hover:bg-[#1E293B] hover:border-[#4F46E5] cursor-pointer transition-all group">
-                        <input
-                          type="checkbox"
-                          name="expressway"
-                          checked={formData.expressway}
-                          onChange={(e) => setFormData({ ...formData, expressway: e.target.checked })}
-                          className="w-5 h-5 rounded cursor-pointer accent-[#4F46E5]"
-                        />
-                        <div className="flex-1">
-                          <p className="text-white font-medium group-hover:text-[#4F46E5] transition-colors">Expressway Tolls</p>
-                          <p className="text-xs text-gray-500">I plan to use expressway routes (toll charges apply)</p>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Step 3: Vehicle & Fuel */}
-              {step === 3 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-2">Seats Available</label>
-                            <div className="relative">
-                                <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
-                                <input 
-                                type="number"
-                                name="seatsTotal"
-                                value={formData.seatsTotal}
-                                onChange={handleChange}
-                                placeholder="3"
-                                min="1"
-                                max="6"
-                                required
-                                className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
-                                />
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">Maximum 6 seats allowed.</p>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-2">Fuel Type</label>
-                            <div className="relative">
-                                <Fuel className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
-                                <select 
-                                    name="fuelType"
-                                    value={formData.fuelType}
-                                    onChange={handleChange}
-                                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none text-sm transition-all"
-                                >
-                                    <option value="octane">Octane (৳130/L)</option>
-                                    <option value="petrol">Petrol (৳125/L)</option>
-                                    <option value="diesel">Diesel (৳109/L)</option>
-                                    <option value="brid">Hybrid (৳130/L)</option>
-                                    <option value="cng">CNG (৳43/unit)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-400 mb-2">Vehicle Mileage (km/L)</label>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 z-10 text-xs font-bold">KM</span>
-                                <input 
-                                    type="number"
-                                    name="mileage"
-                                    value={formData.mileage}
-                                    onChange={handleChange}
-                                    placeholder="12"
-                                    min="1"
-                                    max="50"
-                                    required
-                                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] transition-all"
-                                />
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">Average mileage of your car in city traffic.</p>
-                        </div>
-                    </div>
-                </div>
-              )}
-
-              {/* Step 4: Review */}
-              {step === 4 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                {/* Step 4: Review */}
+                {step === 4 && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                     <div className="bg-[#1E293B] rounded-2xl p-6 border border-[#334155]">
                       <div className="relative grid grid-cols-[20px_1fr] gap-x-4 gap-y-8">
                         <div className="absolute left-[10px] -translate-x-1/2 top-3 bottom-3 w-0.5 bg-gray-700"></div>
@@ -1035,27 +1071,27 @@ const SharerMode = () => {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-[#1E293B] p-4 rounded-xl border border-[#334155]">
-                            <p className="text-xs text-gray-500 mb-1">Date & Time</p>
-                            <p className="font-semibold text-white">{formData.date}</p>
-                            <p className="text-sm text-[#10B981]">{formData.time}</p>
-                        </div>
-                         <div className="bg-[#1E293B] p-4 rounded-xl border border-[#334155]">
-                            <p className="text-xs text-gray-500 mb-1">Distance & Time</p>
-                            <p className="font-semibold text-white">{rideMetrics.distanceKm} km</p>
-                            <p className="text-sm text-gray-400">~{rideMetrics.durationMin} min</p>
-                        </div>
+                      <div className="bg-[#1E293B] p-4 rounded-xl border border-[#334155]">
+                        <p className="text-xs text-gray-500 mb-1">Date & Time</p>
+                        <p className="font-semibold text-white">{formData.date}</p>
+                        <p className="text-sm text-[#10B981]">{formData.time}</p>
+                      </div>
+                      <div className="bg-[#1E293B] p-4 rounded-xl border border-[#334155]">
+                        <p className="text-xs text-gray-500 mb-1">Distance & Time</p>
+                        <p className="font-semibold text-white">{rideMetrics.distanceKm} km</p>
+                        <p className="text-sm text-gray-400">~{rideMetrics.durationMin} min</p>
+                      </div>
                     </div>
 
                     <div className="bg-[#1E293B] p-6 rounded-2xl border border-[#334155]">
-                         <div className="flex justify-between items-center mb-4">
-                            <p className="text-gray-400">Estimated Total Fuel Cost</p>
-                            <p className="text-2xl font-bold text-[#10B981]">৳{rideMetrics.totalCost}</p>
-                         </div>
-                         <div className="flex justify-between items-center text-sm pt-4 border-t border-[#334155]">
-                            <p className="text-gray-400">Estimated Cost Per Person (if full)</p>
-                            <p className="text-white font-medium">~ ৳{rideMetrics.minPrice}</p>
-                         </div>
+                      <div className="flex justify-between items-center mb-4">
+                        <p className="text-gray-400">Estimated Total Fuel Cost</p>
+                        <p className="text-2xl font-bold text-[#10B981]">৳{rideMetrics.totalCost}</p>
+                      </div>
+                      <div className="flex justify-between items-center text-sm pt-4 border-t border-[#334155]">
+                        <p className="text-gray-400">Estimated Cost Per Person (if full)</p>
+                        <p className="text-white font-medium">~ ৳{rideMetrics.minPrice}</p>
+                      </div>
                     </div>
 
                     <div className="border-t border-[#334155] pt-6">
@@ -1085,44 +1121,44 @@ const SharerMode = () => {
                         </div>
                       </div>
                     </div>
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* Navigation Buttons */}
-              <div className="flex gap-4 mt-8 pt-6 border-t border-[#334155]">
-                {step > 1 && (
+                {/* Navigation Buttons */}
+                <div className="flex gap-4 mt-8 pt-6 border-t border-[#334155]">
+                  {step > 1 && (
                     <button
-                        type="button"
-                        onClick={handleBack}
-                        className="flex-1 h-[52px] rounded-xl font-medium border border-[#334155] hover:bg-[#334155] text-white transition-all flex items-center justify-center gap-2"
+                      type="button"
+                      onClick={handleBack}
+                      className="flex-1 h-[52px] rounded-xl font-medium border border-[#334155] hover:bg-[#334155] text-white transition-all flex items-center justify-center gap-2"
                     >
-                        <ArrowLeft className="w-4 h-4" />
-                        Back
+                      <ArrowLeft className="w-4 h-4" />
+                      Back
                     </button>
-                )}
-                
-                {step < totalSteps && (
+                  )}
+
+                  {step < totalSteps && (
                     <button
-                        type="button"
-                        onClick={handleNext}
-                        className={`flex-1 h-[52px] rounded-xl font-medium bg-[#4F46E5] hover:bg-[#4338ca] text-white transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#4F46E5]/20 ${step === 1 ? 'w-full' : ''}`}
+                      type="button"
+                      onClick={handleNext}
+                      className={`flex-1 h-[52px] rounded-xl font-medium bg-[#4F46E5] hover:bg-[#4338ca] text-white transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#4F46E5]/20 ${step === 1 ? 'w-full' : ''}`}
                     >
-                        Next
-                        <ArrowRight className="w-4 h-4" />
+                      Next
+                      <ArrowRight className="w-4 h-4" />
                     </button>
-                )}
-                
-                 {step === totalSteps && (
-                     <button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 h-[52px] rounded-xl font-bold bg-[#10B981] hover:bg-[#059669] text-white transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#10B981]/20"
+                  )}
+
+                  {step === totalSteps && (
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-1 h-[52px] rounded-xl font-bold bg-[#10B981] hover:bg-[#059669] text-white transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#10B981]/20"
                     >
-                        {loading ? 'Publishing...' : 'Publish Ride'}
-                        {!loading && <CheckCircle className="w-5 h-5" />}
+                      {loading ? 'Publishing...' : 'Publish Ride'}
+                      {!loading && <CheckCircle className="w-5 h-5" />}
                     </button>
-                )}
-              </div>
+                  )}
+                </div>
               </form>
             </div>
           )}
@@ -1239,20 +1275,18 @@ const SharerMode = () => {
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span
-                          className={`text-xs px-2.5 py-1 rounded-full border ${
-                            ride.preferences?.multipleStoppages
+                          className={`text-xs px-2.5 py-1 rounded-full border ${ride.preferences?.multipleStoppages
                               ? 'bg-[#4F46E5]/15 border-[#4F46E5]/40 text-[#C7D2FE]'
                               : 'bg-[#0F172A] border-[#334155] text-gray-400'
-                          }`}
+                            }`}
                         >
                           Multiple Stoppages: {ride.preferences?.multipleStoppages ? 'Yes' : 'No'}
                         </span>
                         <span
-                          className={`text-xs px-2.5 py-1 rounded-full border ${
-                            ride.preferences?.expressway
+                          className={`text-xs px-2.5 py-1 rounded-full border ${ride.preferences?.expressway
                               ? 'bg-[#10B981]/15 border-[#10B981]/40 text-[#A7F3D0]'
                               : 'bg-[#0F172A] border-[#334155] text-gray-400'
-                          }`}
+                            }`}
                         >
                           Expressway: {ride.preferences?.expressway ? 'Yes' : 'No'}
                         </span>
@@ -1262,6 +1296,24 @@ const SharerMode = () => {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      {ride.status === 'scheduled' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleStartRide(ride._id)}
+                          disabled={startingRideId === ride._id}
+                          className="h-10 px-3 rounded-lg bg-[#10B981] hover:bg-[#059669] border border-[#10B981] text-white text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-60"
+                        >
+                          {startingRideId === ride._id ? 'Starting...' : 'Start Ride'}
+                        </button>
+                      ) : ride.status === 'in-progress' ? (
+                        <button
+                          type="button"
+                          disabled
+                          className="h-10 px-3 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 text-[#A7F3D0] text-sm font-medium"
+                        >
+                          Ride Started
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => handleStartEdit(ride)}
