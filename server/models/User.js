@@ -49,6 +49,21 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  vehicleVerificationStatus: {
+    type: String,
+    enum: ['not_submitted', 'pending', 'approved', 'rejected'],
+    default: 'not_submitted'
+  },
+  vehicleVerificationRequestedAt: {
+    type: Date
+  },
+  vehicleVerificationReviewedAt: {
+    type: Date
+  },
+  vehicleVerificationReviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   role: {
     type: String,
     enum: ['rider', 'driver', 'admin'],

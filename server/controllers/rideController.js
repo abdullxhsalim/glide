@@ -1,5 +1,6 @@
 const Ride = require('../models/Ride');
 const PartnerRequest = require('../models/PartnerRequest');
+const User = require('../models/User');
 const decodePolyline = require('../utils/polyline');
 
 // Helper: Calculate distance between two points (Haversine formula)
@@ -510,6 +511,21 @@ const createRide = async (req, res) => {
     try {
         const { origin, destination, departureTime, seatsTotal, totalFuelCost, vehicle, preferences, routeData } = req.body;
 
+        const driver = await User.findById(req.user.id).select('role isVerified vehicleVerificationStatus vehicle');
+        if (!driver || driver.role !== 'driver') {
+            return res.status(403).json({ message: 'Only verified sharers can create rides' });
+        }
+
+        const verificationApproved =
+            driver.vehicleVerificationStatus === 'approved' ||
+            (driver.vehicleVerificationStatus == null && driver.isVerified === true);
+
+        if (!verificationApproved) {
+            return res.status(403).json({
+                message: 'Your vehicle verification is not approved yet. Please wait for admin approval before creating rides.'
+            });
+        }
+
         console.log('DEBUG: Creating ride with:');
         console.log('  Origin placeName:', origin?.placeName);
         console.log('  Origin address:', origin?.address);
@@ -553,7 +569,7 @@ const createRide = async (req, res) => {
             // Calculate a baseline price for sorting/display purposes (e.g. if car is full)
             pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)), 
             preferences: mergedPreferences,
-            vehicle: vehicle || req.user.vehicle // Use user's vehicle if not specified
+            vehicle: vehicle || driver.vehicle // Use user's vehicle if not specified
         });
 
         console.log('DEBUG: Ride created:', {

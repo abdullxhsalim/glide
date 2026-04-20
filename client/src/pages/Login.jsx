@@ -40,8 +40,8 @@ const Login = () => {
             // Save user data
             login(data);
             
-            // Navigate to Dashboard
-            navigate('/dash');
+            // Route admins to admin portal and regular users to dashboard.
+            navigate(data?.role === 'admin' ? '/admin/portal' : '/dash');
         } catch (err) {
             setError(err.message || 'Failed to login');
         } finally {

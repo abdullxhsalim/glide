@@ -50,11 +50,11 @@ const Navbar = () => {
             {user ? (
               <div className="flex items-center gap-4">
                 <Link 
-                  to="/dash" 
+                  to={user.role === 'admin' ? '/admin/portal' : '/dash'} 
                   className="flex items-center gap-2 text-gray-300 hover:text-[#10B981] transition-colors px-3 py-2 rounded-md text-sm font-medium"
                 >
                   <LayoutDashboard className="w-4 h-4" />
-                  <span>Dashboard</span>
+                  <span>{user.role === 'admin' ? 'Admin Portal' : 'Dashboard'}</span>
                 </Link>
                 
                 <div className="h-6 w-px bg-gray-700"></div>
@@ -96,6 +96,9 @@ const Navbar = () => {
               </div>
             ) : (
               <>
+                <Link to="/admin/login" className="text-gray-300 hover:text-[#F8FAFC] px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                  Admin
+                </Link>
                 <Link to="/login" className="text-gray-300 hover:text-[#F8FAFC] px-3 py-2 rounded-md text-sm font-medium transition-colors">
                   Log In
                 </Link>
@@ -144,11 +147,11 @@ const Navbar = () => {
                     </div>
                   </div>
                   <Link 
-                    to="/dash" 
+                    to={user.role === 'admin' ? '/admin/portal' : '/dash'} 
                     onClick={() => setIsMenuOpen(false)}
                     className="mt-2 text-gray-300 hover:text-white hover:bg-[#334155] block px-3 py-2 rounded-md text-base font-medium"
                   >
-                    Dashboard
+                    {user.role === 'admin' ? 'Admin Portal' : 'Dashboard'}
                   </Link>
                   <button
                     onClick={handleEditProfile}
@@ -172,6 +175,13 @@ const Navbar = () => {
                   className="text-gray-300 hover:text-white block px-3 py-2 rounded-md text-base font-medium"
                 >
                   Log In
+                </Link>
+                <Link 
+                  to="/admin/login"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="text-gray-300 hover:text-white block px-3 py-2 rounded-md text-base font-medium"
+                >
+                  Admin Login
                 </Link>
                 <Link 
                   to="/signup" 

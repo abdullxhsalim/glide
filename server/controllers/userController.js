@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const Ride = require('../models/Ride');
+const Booking = require('../models/Booking');
 
 // Helper to generate JWT
 const generateToken = (id) => {
@@ -74,6 +76,8 @@ const registerUser = async (req, res) => {
 
     if (role === 'driver') {
       userData.vehicle = vehicle;
+      userData.vehicleVerificationStatus = 'pending';
+      userData.vehicleVerificationRequestedAt = new Date();
     }
 
     const user = await User.create(userData);
@@ -87,6 +91,8 @@ const registerUser = async (req, res) => {
         contactNumber: getResolvedContactNumber(user),
         role: user.role,
         isVerified: user.isVerified,
+        vehicleVerificationStatus: user.vehicleVerificationStatus,
+        vehicleVerificationRequestedAt: user.vehicleVerificationRequestedAt,
         vehicle: user.vehicle,
         token: generateToken(user._id)
       });
@@ -119,6 +125,8 @@ const loginUser = async (req, res) => {
         contactNumber: getResolvedContactNumber(user),
         role: user.role,
         isVerified: user.isVerified,
+        vehicleVerificationStatus: user.vehicleVerificationStatus,
+        vehicleVerificationRequestedAt: user.vehicleVerificationRequestedAt,
         vehicle: user.vehicle,
         token: generateToken(user._id)
       });
@@ -237,6 +245,8 @@ const updateMe = async (req, res) => {
       contactNumber: getResolvedContactNumber(user),
       role: user.role,
       isVerified: user.isVerified,
+      vehicleVerificationStatus: user.vehicleVerificationStatus,
+      vehicleVerificationRequestedAt: user.vehicleVerificationRequestedAt,
       vehicle: user.vehicle,
       token: generateToken(user._id)
     });
@@ -279,7 +289,11 @@ const verifyVehicle = async (req, res) => {
       year
     };
     user.role = 'driver';
-    user.isVerified = true;
+    user.isVerified = false;
+    user.vehicleVerificationStatus = 'pending';
+    user.vehicleVerificationRequestedAt = new Date();
+    user.vehicleVerificationReviewedAt = undefined;
+    user.vehicleVerificationReviewedBy = undefined;
 
     await user.save();
 
@@ -291,6 +305,8 @@ const verifyVehicle = async (req, res) => {
       contactNumber: getResolvedContactNumber(user),
       role: user.role,
       isVerified: user.isVerified,
+      vehicleVerificationStatus: user.vehicleVerificationStatus,
+      vehicleVerificationRequestedAt: user.vehicleVerificationRequestedAt,
       vehicle: user.vehicle,
       token: generateToken(user._id)
     });
@@ -300,10 +316,188 @@ const verifyVehicle = async (req, res) => {
   }
 };
 
+// @desc    Register new admin
+// @route   POST /api/users/register-admin
+// @access  Public
+const registerAdmin = async (req, res) => {
+  const { name, email, studentId, password } = req.body;
+
+  try {
+    if (!name || !email || !studentId || !password) {
+      return res.status(400).json({ message: 'Please fill in all fields' });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedStudentId = String(studentId).trim();
+
+    const userExists = await User.findOne({
+      $or: [{ email: normalizedEmail }, { studentId: normalizedStudentId }]
+    });
+
+    if (userExists) {
+      if (userExists.email === normalizedEmail) {
+        return res.status(400).json({ message: 'User with this email already exists' });
+      }
+      if (userExists.studentId === normalizedStudentId) {
+        return res.status(400).json({ message: 'User with this Student ID already exists' });
+      }
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const adminUser = await User.create({
+      name: String(name).trim(),
+      email: normalizedEmail,
+      studentId: normalizedStudentId,
+      password: hashedPassword,
+      role: 'admin',
+      isVerified: true
+    });
+
+    return res.status(201).json({
+      _id: adminUser.id,
+      name: adminUser.name,
+      email: adminUser.email,
+      studentId: adminUser.studentId,
+      contactNumber: getResolvedContactNumber(adminUser),
+      role: adminUser.role,
+      isVerified: adminUser.isVerified,
+      vehicleVerificationStatus: adminUser.vehicleVerificationStatus,
+      vehicleVerificationRequestedAt: adminUser.vehicleVerificationRequestedAt,
+      vehicle: adminUser.vehicle,
+      token: generateToken(adminUser._id)
+    });
+  } catch (error) {
+    console.error('Admin registration error:', error);
+    return res.status(500).json({ message: 'Server Error: ' + error.message });
+  }
+};
+
+// @desc    Get admin operations overview
+// @route   GET /api/users/admin/operations-overview
+// @access  Private/Admin
+const getAdminOperationsOverview = async (_req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalHoppers,
+      totalSharers,
+      pendingVehicleVerifications,
+      totalRidePosts,
+      totalMatchmakingRequests,
+      hoppers,
+      sharers,
+      pendingVehicleUsers,
+      rides,
+      matchmakingRequests
+    ] = await Promise.all([
+      User.countDocuments({}),
+      User.countDocuments({ role: { $in: ['rider', 'hopper'] } }),
+      User.countDocuments({ role: 'driver' }),
+      User.countDocuments({ vehicleVerificationStatus: 'pending' }),
+      Ride.countDocuments({}),
+      Booking.countDocuments({}),
+      User.find({ role: { $in: ['rider', 'hopper'] } })
+        .select('name email studentId isVerified totalRides createdAt')
+        .sort({ createdAt: -1 })
+        .limit(100),
+      User.find({ role: 'driver' })
+        .select('name email studentId isVerified totalRides vehicle vehicleVerificationStatus createdAt')
+        .sort({ createdAt: -1 })
+        .limit(100),
+      User.find({ vehicleVerificationStatus: 'pending' })
+        .select('name email studentId vehicle vehicleVerificationStatus vehicleVerificationRequestedAt createdAt')
+        .sort({ vehicleVerificationRequestedAt: 1, createdAt: 1 })
+        .limit(100),
+      Ride.find({})
+        .populate('driver', 'name email')
+        .sort({ createdAt: -1 })
+        .limit(100),
+      Booking.find({})
+        .populate('rider', 'name email')
+        .populate('driver', 'name email')
+        .populate('ride', 'origin destination')
+        .sort({ createdAt: -1 })
+        .limit(100)
+    ]);
+
+    return res.status(200).json({
+      summary: {
+        totalUsers,
+        totalHoppers,
+        totalSharers,
+        pendingVehicleVerifications,
+        totalRidePosts,
+        totalMatchmakingRequests
+      },
+      hoppers,
+      sharers,
+      pendingVehicleVerifications: pendingVehicleUsers,
+      rides,
+      matchmakingRequests
+    });
+  } catch (error) {
+    console.error('Admin operations overview error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Review vehicle verification request
+// @route   PATCH /api/users/admin/vehicle-verifications/:userId
+// @access  Private/Admin
+const reviewVehicleVerification = async (req, res) => {
+  const { action } = req.body;
+  const { userId } = req.params;
+
+  try {
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: 'Action must be either approve or reject' });
+    }
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (targetUser.role !== 'driver') {
+      return res.status(400).json({ message: 'Only driver verification requests can be reviewed' });
+    }
+
+    if (targetUser.vehicleVerificationStatus !== 'pending') {
+      return res.status(400).json({ message: 'This verification request is not pending' });
+    }
+
+    targetUser.vehicleVerificationStatus = action === 'approve' ? 'approved' : 'rejected';
+    targetUser.vehicleVerificationReviewedAt = new Date();
+    targetUser.vehicleVerificationReviewedBy = req.user.id;
+    targetUser.isVerified = action === 'approve';
+
+    await targetUser.save();
+
+    return res.status(200).json({
+      message: `Vehicle verification ${action}d successfully`,
+      user: {
+        _id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        vehicleVerificationStatus: targetUser.vehicleVerificationStatus,
+        isVerified: targetUser.isVerified
+      }
+    });
+  } catch (error) {
+    console.error('Review vehicle verification error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getMe,
   updateMe,
-  verifyVehicle
+  verifyVehicle,
+  registerAdmin,
+  getAdminOperationsOverview,
+  reviewVehicleVerification
 };
