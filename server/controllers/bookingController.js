@@ -46,11 +46,15 @@ const createBookingRequest = async (req, res) => {
 
     const fallbackPickup = {
       type: 'Point',
-      coordinates: ride.origin?.coordinates || []
+      coordinates: ride.origin?.coordinates || [],
+      placeName: ride.origin?.placeName,
+      address: ride.origin?.address
     };
     const fallbackDropoff = {
       type: 'Point',
-      coordinates: ride.destination?.coordinates || []
+      coordinates: ride.destination?.coordinates || [],
+      placeName: ride.destination?.placeName,
+      address: ride.destination?.address
     };
 
     if (!fallbackPickup.coordinates.length || !fallbackDropoff.coordinates.length) {

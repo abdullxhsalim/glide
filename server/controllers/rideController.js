@@ -598,7 +598,7 @@ const createRide = async (req, res) => {
 // @access  Private
 const getMyRides = async (req, res) => {
     try {
-        const rides = await Ride.find({ driver: req.user.id }).sort({ departureTime: 1 });
+        const rides = await Ride.find({ driver: req.user.id }).sort({ createdAt: -1 });
         res.json(rides);
     } catch (error) {
         console.error('Error fetching driver rides:', error);

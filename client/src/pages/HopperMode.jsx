@@ -1607,14 +1607,18 @@ const HopperMode = () => {
                             <MapPin className="w-4 h-4 text-[#0EA5E9] mt-0.5" />
                             <div>
                                 <p className="text-xs text-gray-400">Pickup</p>
-                                <p className="text-sm text-gray-200">{booking.pickupLocation?.placeName || booking.pickupLocation?.address || 'Unknown'}</p>
+                                <p className="text-sm text-gray-200">
+                                  {booking.pickupLocation?.placeName || booking.pickupLocation?.address || ride.origin?.placeName || ride.origin?.address || 'Unknown'}
+                                </p>
                             </div>
                          </div>
                          <div className="flex items-start gap-3 mt-3">
                             <MapPin className="w-4 h-4 text-[#A78BFA] mt-0.5" />
                             <div>
                                 <p className="text-xs text-gray-400">Dropoff</p>
-                                <p className="text-sm text-gray-200">{booking.dropoffLocation?.placeName || booking.dropoffLocation?.address || 'Unknown'}</p>
+                                <p className="text-sm text-gray-200">
+                                  {booking.dropoffLocation?.placeName || booking.dropoffLocation?.address || ride.destination?.placeName || ride.destination?.address || 'Unknown'}
+                                </p>
                             </div>
                          </div>
                          <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[#334155]/50">

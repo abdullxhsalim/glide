@@ -1396,7 +1396,7 @@ const SharerMode = () => {
                           type="button"
                           onClick={() => handleRideStatusUpdate(ride._id, 'in-progress')}
                           disabled={rideStatusUpdatingId === ride._id}
-                          className="h-9 px-3 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-semibold disabled:opacity-60"
+                          className="w-full h-10 px-3 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                           {rideStatusUpdatingId === ride._id ? 'Starting...' : 'Start Ride'}
                         </button>
@@ -1407,7 +1407,7 @@ const SharerMode = () => {
                           type="button"
                           onClick={() => handleRideStatusUpdate(ride._id, 'completed')}
                           disabled={rideStatusUpdatingId === ride._id}
-                          className="h-9 px-3 rounded-lg bg-[#4F46E5] hover:bg-[#4338ca] text-white text-xs font-semibold disabled:opacity-60"
+                          className="w-full h-10 px-3 rounded-lg bg-[#4F46E5] hover:bg-[#4338ca] text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                           {rideStatusUpdatingId === ride._id ? 'Ending...' : 'End Ride'}
                         </button>
