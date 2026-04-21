@@ -39,6 +39,7 @@ const userSchema = new mongoose.Schema({
   },
   contactNumber: {
     type: String,
+    required: function() { return this.role !== 'admin'; },
     trim: true,
     default: ''
   },

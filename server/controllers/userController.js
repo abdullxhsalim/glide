@@ -24,7 +24,9 @@ const registerUser = async (req, res) => {
 
   try {
     // 1. Basic Validation
-    if (!name || !email || !studentId || !password || !role) {
+    const normalizedContactNumber = String(contactNumber || '').trim();
+
+    if (!name || !email || !studentId || !password || !role || !normalizedContactNumber) {
       return res.status(400).json({ message: 'Please fill in all fields' });
     }
 
@@ -67,8 +69,8 @@ const registerUser = async (req, res) => {
       name,
       email,
       studentId,
-      contactNumber: contactNumber || '',
-      phone: contactNumber || '',
+      contactNumber: normalizedContactNumber,
+      phone: normalizedContactNumber,
       password: hashedPassword,
       role,
       isVerified: false // Default to false until verified
@@ -272,6 +274,13 @@ const updateMe = async (req, res) => {
         licensePlate: mergedVehicle.licensePlate,
         year: mergedVehicle.year
       };
+
+      // Any driver vehicle profile update must go through admin re-verification.
+      user.isVerified = false;
+      user.vehicleVerificationStatus = 'pending';
+      user.vehicleVerificationRequestedAt = new Date();
+      user.vehicleVerificationReviewedAt = undefined;
+      user.vehicleVerificationReviewedBy = undefined;
     }
 
     await user.save();

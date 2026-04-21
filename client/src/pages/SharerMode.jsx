@@ -54,6 +54,10 @@ const SharerMode = () => {
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState('');
   const [bookingActionId, setBookingActionId] = useState('');
+  const [acceptedBookingsByRide, setAcceptedBookingsByRide] = useState({});
+  const [acceptedBookingsLoading, setAcceptedBookingsLoading] = useState(false);
+  const [expandedRideHoppers, setExpandedRideHoppers] = useState({});
+  const [rideStatusUpdatingId, setRideStatusUpdatingId] = useState('');
   const [editForm, setEditForm] = useState({
     departureDate: '',
     departureHour: '12',
@@ -204,6 +208,43 @@ const SharerMode = () => {
     }
   }, []);
 
+  const loadAcceptedBookings = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+
+    setAcceptedBookingsLoading(true);
+    try {
+      const response = await fetch('/api/bookings/driver?status=accepted', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to load selected hoppers');
+      }
+
+      const grouped = (Array.isArray(data) ? data : []).reduce((acc, booking) => {
+        const rideId = booking?.ride?._id;
+        if (!rideId) return acc;
+        if (!acc[rideId]) {
+          acc[rideId] = [];
+        }
+        acc[rideId].push(booking);
+        return acc;
+      }, {});
+
+      setAcceptedBookingsByRide(grouped);
+    } catch (err) {
+      setBookingsError(err.message || 'Failed to load selected hoppers');
+    } finally {
+      setAcceptedBookingsLoading(false);
+    }
+  }, []);
+
   const handleBookingAction = async (bookingId, action) => {
     const token = getToken();
     if (!token) {
@@ -242,6 +283,7 @@ const SharerMode = () => {
               : ride
           )
         );
+        await loadAcceptedBookings();
       }
     } catch (err) {
       setBookingsError(err.message || `Failed to ${action} booking request`);
@@ -250,7 +292,64 @@ const SharerMode = () => {
     }
   };
 
+  const getHopperContact = (booking) => {
+    return booking?.rider?.contactNumber || booking?.rider?.phone || 'Not provided';
+  };
+
+  const toggleSelectedHoppers = (rideId) => {
+    setExpandedRideHoppers((prev) => ({
+      ...prev,
+      [rideId]: !prev[rideId]
+    }));
+  };
+
+  const handleRideStatusUpdate = async (rideId, status) => {
+    const token = getToken();
+    if (!token) {
+      setRidesError('Please log in again to manage your rides.');
+      return;
+    }
+
+    if (status === 'in-progress') {
+      const rideToStart = driverRides.find((ride) => ride._id === rideId);
+      if (!rideToStart || Number(rideToStart.seatsBooked || 0) < 1) {
+        setRidesError('At least one booked seat is required to start a ride.');
+        return;
+      }
+    }
+
+    setRideStatusUpdatingId(rideId);
+    setRidesError('');
+    try {
+      const response = await fetch(`/api/rides/${rideId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update ride status');
+      }
+
+      setDriverRides((prev) => prev.map((ride) => (ride._id === rideId ? data : ride)));
+      await loadDriverBookings();
+    } catch (err) {
+      setRidesError(err.message || 'Failed to update ride status');
+    } finally {
+      setRideStatusUpdatingId('');
+    }
+  };
+
   const handleStartEdit = (ride) => {
+    if (ride.status !== 'scheduled') {
+      setRidesError('Only scheduled rides can be edited.');
+      return;
+    }
+
     const timeParts = getEditTimeParts(ride.departureTime);
     setEditRideId(ride._id);
     setEditForm({
@@ -349,6 +448,12 @@ const SharerMode = () => {
       return;
     }
 
+    const rideToDelete = driverRides.find((ride) => ride._id === rideId);
+    if (!rideToDelete || rideToDelete.status !== 'scheduled') {
+      setRidesError('Only scheduled rides can be deleted.');
+      return;
+    }
+
     const shouldDelete = window.confirm('Delete this ride permanently?');
     if (!shouldDelete) return;
 
@@ -382,8 +487,9 @@ const SharerMode = () => {
     if (activeSharerPanel === 'manage') {
       loadMyRides();
       loadDriverBookings();
+      loadAcceptedBookings();
     }
-  }, [activeSharerPanel, loadMyRides, loadDriverBookings]);
+  }, [activeSharerPanel, loadMyRides, loadDriverBookings, loadAcceptedBookings]);
 
   // Handle "Use My Location"
   const handleUseMyLocation = () => {
@@ -1140,6 +1246,7 @@ const SharerMode = () => {
                 onClick={() => {
                   loadMyRides();
                   loadDriverBookings();
+                  loadAcceptedBookings();
                 }}
                 className="px-4 py-2 rounded-lg border border-[#334155] text-sm text-gray-200 hover:bg-[#1E293B] transition-all"
               >
@@ -1261,26 +1368,81 @@ const SharerMode = () => {
                         {ride.status}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleStartEdit(ride)}
-                        className="h-10 px-3 rounded-lg bg-[#4F46E5]/90 hover:bg-[#4F46E5] border border-[#6366F1] text-white text-sm font-medium flex items-center gap-2 transition-all shadow-md shadow-[#4F46E5]/20"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRide(ride._id)}
-                        disabled={deletingRideId === ride._id}
-                        className="h-10 px-3 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#475569] hover:border-[#F59E0B] text-[#F8FAFC] hover:text-[#FBBF24] text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-60"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        {deletingRideId === ride._id ? 'Deleting...' : 'Delete'}
-                      </button>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {ride.status === 'scheduled' && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(ride)}
+                            className="h-10 px-3 rounded-lg bg-[#4F46E5]/90 hover:bg-[#4F46E5] border border-[#6366F1] text-white text-sm font-medium flex items-center gap-2 transition-all shadow-md shadow-[#4F46E5]/20"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRide(ride._id)}
+                            disabled={deletingRideId === ride._id}
+                            className="h-10 px-3 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#475569] hover:border-[#F59E0B] text-[#F8FAFC] hover:text-[#FBBF24] text-sm font-medium flex items-center gap-2 transition-all disabled:opacity-60"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            {deletingRideId === ride._id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
+                      )}
+
+                      {ride.status === 'scheduled' && Number(ride.seatsBooked || 0) >= 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRideStatusUpdate(ride._id, 'in-progress')}
+                          disabled={rideStatusUpdatingId === ride._id}
+                          className="h-9 px-3 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white text-xs font-semibold disabled:opacity-60"
+                        >
+                          {rideStatusUpdatingId === ride._id ? 'Starting...' : 'Start Ride'}
+                        </button>
+                      )}
+
+                      {ride.status === 'in-progress' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRideStatusUpdate(ride._id, 'completed')}
+                          disabled={rideStatusUpdatingId === ride._id}
+                          className="h-9 px-3 rounded-lg bg-[#4F46E5] hover:bg-[#4338ca] text-white text-xs font-semibold disabled:opacity-60"
+                        >
+                          {rideStatusUpdatingId === ride._id ? 'Ending...' : 'End Ride'}
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectedHoppers(ride._id)}
+                      className="w-full h-9 px-3 rounded-lg bg-[#0F172A] hover:bg-[#1E293B] border border-[#334155] text-[#E2E8F0] text-xs font-semibold"
+                    >
+                      {expandedRideHoppers[ride._id] ? 'Hide Selected Hoppers' : 'View Selected Hoppers'}
+                    </button>
+                  </div>
+
+                  {expandedRideHoppers[ride._id] && (
+                    <div className="border-t border-[#334155] pt-4">
+                      {acceptedBookingsLoading ? (
+                        <p className="text-sm text-gray-400">Loading selected hoppers...</p>
+                      ) : (acceptedBookingsByRide[ride._id] || []).length === 0 ? (
+                        <p className="text-sm text-gray-400">No selected hoppers for this ride yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {(acceptedBookingsByRide[ride._id] || []).map((booking) => (
+                            <div key={booking._id} className="rounded-lg border border-[#334155] bg-[#0F172A]/60 px-3 py-2">
+                              <p className="text-sm text-white font-medium">{booking.rider?.name || 'Hopper'}</p>
+                              <p className="text-xs text-gray-400">Phone Number: {getHopperContact(booking)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {editRideId === ride._id && (
                     <div className="border-t border-[#334155] pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">

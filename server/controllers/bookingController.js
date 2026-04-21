@@ -117,7 +117,7 @@ const getDriverBookings = async (req, res) => {
     }
 
     const bookings = await Booking.find(query)
-      .populate('rider', 'name email')
+      .populate('rider', 'name email contactNumber phone')
       .populate('ride', 'origin destination departureTime seatsTotal seatsBooked status')
       .sort({ createdAt: -1 });
 
