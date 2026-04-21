@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, MapPin, Clock, User, Star, Loader, ArrowRight, ArrowLeft, Calendar, Locate, Phone, Edit3, Trash2 } from 'lucide-react';
+import { Search, MapPin, Clock, User, Star, Loader, ArrowRight, ArrowLeft, Calendar, Locate, Phone, Edit3, Trash2, History } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import RouteMap from '../components/RouteMap';
 import GoogleLocationInput from '../components/GoogleLocationInput';
@@ -48,6 +48,11 @@ const HopperMode = () => {
   const [partnerDestLocation, setPartnerDestLocation] = useState(null);
   const [partnerOriginInput, setPartnerOriginInput] = useState('');
   const [partnerDestInput, setPartnerDestInput] = useState('');
+
+  const [showMyBookings, setShowMyBookings] = useState(false);
+  const [myBookings, setMyBookings] = useState([]);
+  const [myBookingsLoading, setMyBookingsLoading] = useState(false);
+  const [myBookingsError, setMyBookingsError] = useState('');
 
   const [originLocation, setOriginLocation] = useState(null);
   const [destLocation, setDestLocation] = useState(null);
@@ -575,6 +580,41 @@ const HopperMode = () => {
     }
   };
 
+  const handleLoadMyBookings = async () => {
+    setMyBookingsError('');
+
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+      const token = userInfo?.token;
+
+      if (!token) {
+        setMyBookingsError('Please login to view your rides.');
+        return;
+      }
+
+      setMyBookingsLoading(true);
+      setShowMyBookings(true);
+      setShowPartnerFinder(false); // Hide partner finder if open
+
+      const response = await fetch('/api/bookings/mine', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to load your rides');
+      }
+
+      setMyBookings(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setMyBookingsError(err.message || 'Failed to load your rides');
+    } finally {
+      setMyBookingsLoading(false);
+    }
+  };
+
   const formatPartnerSearchTime = (dateString) => {
     const dt = new Date(dateString);
     if (Number.isNaN(dt.getTime())) return '';
@@ -849,7 +889,19 @@ const HopperMode = () => {
         },
         body: JSON.stringify({
           rideId: ride._id,
-          seatsBooked: 1
+          seatsBooked: 1,
+          pickupLocation: originLocation ? {
+             type: 'Point',
+             coordinates: [originLocation.lng, originLocation.lat],
+             placeName: originLocation.address,
+             address: originLocation.address
+          } : undefined,
+          dropoffLocation: destLocation ? {
+             type: 'Point',
+             coordinates: [destLocation.lng, destLocation.lat],
+             placeName: destLocation.address,
+             address: destLocation.address
+          } : undefined
         })
       });
 
@@ -949,7 +1001,7 @@ const HopperMode = () => {
             </p>
         </div>
 
-        {!showPartnerFinder && (
+        {!showPartnerFinder && !showMyBookings && (
         <>
         {/* Search Card */}
         <div className="max-w-2xl mx-auto bg-[#334155]/30 backdrop-blur-xl rounded-3xl p-8 border border-[#334155] shadow-2xl relative overflow-hidden transition-all duration-300">
@@ -1112,18 +1164,27 @@ const HopperMode = () => {
             </div>
         </div>
 
-        <div className="max-w-2xl mx-auto mt-8">
+        <div className="max-w-2xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => {
               setShowPartnerFinder(true);
               setPartnerError('');
               setPartnerSuccess('');
               setPartnerRequestConfirmed(false);
+              setShowMyBookings(false);
             }}
             className="w-full py-4 bg-[#1E293B] border border-[#334155] hover:border-[#10B981] text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
           >
             <User className="w-5 h-5 text-[#10B981]" />
-            Can't find any Ride? Find a Partner to share
+            Find a Partner to share
+          </button>
+          
+          <button
+            onClick={handleLoadMyBookings}
+            className="w-full py-4 bg-[#1E293B] border border-[#334155] hover:border-[#4F46E5] text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+             <History className="w-5 h-5 text-[#4F46E5]" />
+             My Rides
           </button>
         </div>
         </>
@@ -1484,7 +1545,95 @@ const HopperMode = () => {
           </div>
         )}
 
-        {!showPartnerFinder && (
+        {showMyBookings && (
+          <div className="max-w-2xl mx-auto mt-6 bg-[#334155]/30 backdrop-blur-xl rounded-3xl p-8 border border-[#334155] shadow-2xl">
+            <div className="flex items-center justify-between gap-3 mb-6">
+              <h2 className="text-2xl font-bold text-white">My Rides</h2>
+              <button
+                onClick={() => setShowMyBookings(false)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0F172A] border border-[#334155] text-gray-200 hover:border-[#4F46E5] text-sm transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Search
+              </button>
+            </div>
+            
+            {myBookingsError && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 text-red-200 text-sm rounded-xl">
+                {myBookingsError}
+              </div>
+            )}
+
+            {myBookingsLoading ? (
+              <div className="flex justify-center text-gray-300 py-8">
+                <Loader className="w-8 h-8 animate-spin text-[#4F46E5]" />
+              </div>
+            ) : myBookings.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">You haven't booked any rides yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {myBookings.map((booking) => {
+                  const driver = booking.driver || {};
+                  const ride = booking.ride || {};
+                  
+                  return (
+                    <div key={booking._id} className="p-5 rounded-2xl border border-[#334155] bg-[#1E293B]">
+                      <div className="flex justify-between items-start mb-3 border-b border-[#334155] pb-3">
+                        <div>
+                          <h3 className="font-semibold text-white">Sharer: {driver.name || 'Unknown'}</h3>
+                          {driver.contactNumber && (
+                            <p className="text-sm text-gray-400 mt-1 flex items-center gap-1">
+                              <Phone className="w-3.5 h-3.5" />
+                              {driver.contactNumber}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide
+                            ${booking.status === 'accepted' ? 'bg-[#10B981]/15 text-[#10B981]' : ''}
+                            ${booking.status === 'pending' ? 'bg-amber-500/15 text-amber-500' : ''}
+                            ${booking.status === 'rejected' ? 'bg-red-500/15 text-red-500' : ''}
+                          `}>
+                            {booking.status}
+                          </span>
+                          {ride.status && (
+                            <p className="text-xs text-gray-400 mt-1">Ride logic: {ride.status}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                         <div className="flex items-start gap-3">
+                            <MapPin className="w-4 h-4 text-[#0EA5E9] mt-0.5" />
+                            <div>
+                                <p className="text-xs text-gray-400">Pickup</p>
+                                <p className="text-sm text-gray-200">{booking.pickupLocation?.placeName || booking.pickupLocation?.address || 'Unknown'}</p>
+                            </div>
+                         </div>
+                         <div className="flex items-start gap-3 mt-3">
+                            <MapPin className="w-4 h-4 text-[#A78BFA] mt-0.5" />
+                            <div>
+                                <p className="text-xs text-gray-400">Dropoff</p>
+                                <p className="text-sm text-gray-200">{booking.dropoffLocation?.placeName || booking.dropoffLocation?.address || 'Unknown'}</p>
+                            </div>
+                         </div>
+                         <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[#334155]/50">
+                            <Clock className="w-4 h-4 text-emerald-400" />
+                            <p className="text-sm text-gray-200">
+                               {ride.departureTime ? new Date(ride.departureTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown time'}
+                            </p>
+                         </div>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!showPartnerFinder && !showMyBookings && (
         /* Results Section */
         <div className="max-w-2xl mx-auto mt-12 space-y-6">
           {bookingSuccess && (
