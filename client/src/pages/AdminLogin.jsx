@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { Lock, Mail, ShieldCheck, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Lock, User, ShieldCheck, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const AdminLogin = () => {
@@ -22,7 +22,7 @@ const AdminLogin = () => {
   };
 
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: ''
   });
   const [loading, setLoading] = useState(false);
@@ -43,11 +43,11 @@ const AdminLogin = () => {
 
     try {
       const payload = {
-        email: formData.email.trim().toLowerCase(),
+        username: formData.username.trim().toLowerCase(),
         password: formData.password
       };
 
-      const response = await fetch('/api/users/login', {
+      const response = await fetch('/api/users/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -77,8 +77,8 @@ const AdminLogin = () => {
       login(data);
       navigate('/admin/portal');
     } catch (err) {
-      if (err.message === 'Invalid email or password') {
-        setError('Invalid admin email or password. Use a valid admin account and try again.');
+      if (err.message === 'Invalid username or password') {
+        setError('Invalid admin username or password. Use a valid admin account and try again.');
       } else {
         setError(err.message || 'Unable to log in as admin');
       }
@@ -121,16 +121,16 @@ const AdminLogin = () => {
 
         <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
           <div>
-            <label className="text-sm font-medium text-gray-300 ml-1">Admin Email</label>
+            <label className="text-sm font-medium text-gray-300 ml-1">Admin Username</label>
             <div className="relative mt-2 group">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] group-focus-within:text-[#F59E0B] transition-colors" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] group-focus-within:text-[#F59E0B] transition-colors" />
               <input
-                name="email"
-                type="email"
+                name="username"
+                type="text"
                 required
-                value={formData.email}
+                value={formData.username}
                 onChange={handleChange}
-                placeholder="admin@glide.local"
+                placeholder="admin"
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#020617] border border-[#334155] text-[#F8FAFC] placeholder-[#475569] focus:outline-none focus:border-[#F59E0B] focus:ring-1 focus:ring-[#F59E0B]"
               />
             </div>
@@ -173,10 +173,7 @@ const AdminLogin = () => {
         </div>
 
         <div className="relative z-10 mt-4 text-center text-sm text-[#94A3B8]">
-          Need a new admin account?{' '}
-          <Link to="/admin/signup" className="text-[#FCD34D] hover:text-[#F59E0B] font-medium">
-            Register admin
-          </Link>
+          Admin accounts are managed internally by the system owner.
         </div>
 
         <div className="relative z-10 mt-3 text-center text-sm text-[#94A3B8]">

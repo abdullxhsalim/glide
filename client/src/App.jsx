@@ -7,7 +7,6 @@ import Dashboard from "./pages/Dashboard";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import AdminLogin from "./pages/AdminLogin";
-import AdminSignup from "./pages/AdminSignup";
 import AdminPortal from "./pages/AdminPortal";
 import { AuthProvider } from "./context/AuthContext";
 
@@ -26,7 +25,6 @@ function Layout() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/admin/signup" element={<AdminSignup />} />
           <Route path="/admin/portal" element={<AdminPortal />} />
         </Routes>
       </div>

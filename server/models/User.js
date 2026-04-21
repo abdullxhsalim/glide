@@ -14,6 +14,13 @@ const userSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    lowercase: true
+  },
   email: {
     type: String,
     required: true,
@@ -25,8 +32,9 @@ const userSchema = new mongoose.Schema({
   },
   studentId: {
     type: String,
-    required: true,
+    required: false,
     unique: true,
+    sparse: true,
     trim: true
   },
   contactNumber: {

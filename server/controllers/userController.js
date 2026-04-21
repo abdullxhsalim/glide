@@ -139,6 +139,45 @@ const loginUser = async (req, res) => {
   }
 };
 
+// @desc    Authenticate an admin user
+// @route   POST /api/users/admin/login
+// @access  Public
+const loginAdmin = async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const normalizedUsername = String(username || '').trim().toLowerCase();
+
+    if (!normalizedUsername || !password) {
+      return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    const adminUser = await User.findOne({ username: normalizedUsername, role: 'admin' });
+
+    if (adminUser && (await bcrypt.compare(password, adminUser.password))) {
+      return res.json({
+        _id: adminUser.id,
+        name: adminUser.name,
+        username: adminUser.username,
+        email: adminUser.email,
+        studentId: adminUser.studentId,
+        contactNumber: getResolvedContactNumber(adminUser),
+        role: adminUser.role,
+        isVerified: adminUser.isVerified,
+        vehicleVerificationStatus: adminUser.vehicleVerificationStatus,
+        vehicleVerificationRequestedAt: adminUser.vehicleVerificationRequestedAt,
+        vehicle: adminUser.vehicle,
+        token: generateToken(adminUser._id)
+      });
+    }
+
+    return res.status(401).json({ message: 'Invalid username or password' });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 // @desc    Get user data
 // @route   GET /api/users/me
 // @access  Private
@@ -320,26 +359,26 @@ const verifyVehicle = async (req, res) => {
 // @route   POST /api/users/register-admin
 // @access  Public
 const registerAdmin = async (req, res) => {
-  const { name, email, studentId, password } = req.body;
+  const { name, username, email, password } = req.body;
 
   try {
-    if (!name || !email || !studentId || !password) {
+    if (!name || !username || !email || !password) {
       return res.status(400).json({ message: 'Please fill in all fields' });
     }
 
+    const normalizedUsername = String(username).trim().toLowerCase();
     const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedStudentId = String(studentId).trim();
 
     const userExists = await User.findOne({
-      $or: [{ email: normalizedEmail }, { studentId: normalizedStudentId }]
+      $or: [{ email: normalizedEmail }, { username: normalizedUsername }]
     });
 
     if (userExists) {
       if (userExists.email === normalizedEmail) {
         return res.status(400).json({ message: 'User with this email already exists' });
       }
-      if (userExists.studentId === normalizedStudentId) {
-        return res.status(400).json({ message: 'User with this Student ID already exists' });
+      if (userExists.username === normalizedUsername) {
+        return res.status(400).json({ message: 'Username is already in use' });
       }
     }
 
@@ -348,8 +387,8 @@ const registerAdmin = async (req, res) => {
 
     const adminUser = await User.create({
       name: String(name).trim(),
+      username: normalizedUsername,
       email: normalizedEmail,
-      studentId: normalizedStudentId,
       password: hashedPassword,
       role: 'admin',
       isVerified: true
@@ -358,6 +397,7 @@ const registerAdmin = async (req, res) => {
     return res.status(201).json({
       _id: adminUser.id,
       name: adminUser.name,
+      username: adminUser.username,
       email: adminUser.email,
       studentId: adminUser.studentId,
       contactNumber: getResolvedContactNumber(adminUser),
@@ -399,15 +439,15 @@ const getAdminOperationsOverview = async (_req, res) => {
       Ride.countDocuments({}),
       Booking.countDocuments({}),
       User.find({ role: { $in: ['rider', 'hopper'] } })
-        .select('name email studentId isVerified totalRides createdAt')
+        .select('name email studentId role isVerified totalRides createdAt')
         .sort({ createdAt: -1 })
         .limit(100),
       User.find({ role: 'driver' })
-        .select('name email studentId isVerified totalRides vehicle vehicleVerificationStatus createdAt')
+        .select('name email studentId role isVerified totalRides vehicle vehicleVerificationStatus createdAt')
         .sort({ createdAt: -1 })
         .limit(100),
       User.find({ vehicleVerificationStatus: 'pending' })
-        .select('name email studentId vehicle vehicleVerificationStatus vehicleVerificationRequestedAt createdAt')
+        .select('name email studentId role vehicle vehicleVerificationStatus vehicleVerificationRequestedAt createdAt')
         .sort({ vehicleVerificationRequestedAt: 1, createdAt: 1 })
         .limit(100),
       Ride.find({})
@@ -422,6 +462,38 @@ const getAdminOperationsOverview = async (_req, res) => {
         .limit(100)
     ]);
 
+    const rideIds = rides.map((ride) => ride._id);
+    const acceptedRideBookings = await Booking.find({
+      ride: { $in: rideIds },
+      status: 'accepted'
+    })
+      .populate('rider', 'name email studentId')
+      .select('ride rider seatsBooked status')
+      .lean();
+
+    const acceptedHoppersByRide = acceptedRideBookings.reduce((acc, booking) => {
+      const rideId = String(booking.ride);
+      if (!acc[rideId]) {
+        acc[rideId] = [];
+      }
+
+      acc[rideId].push({
+        _id: booking.rider?._id,
+        name: booking.rider?.name || 'Unknown',
+        email: booking.rider?.email || 'N/A',
+        studentId: booking.rider?.studentId || 'N/A',
+        seatsBooked: booking.seatsBooked || 0
+      });
+
+      return acc;
+    }, {});
+
+    const ridesWithAcceptedHoppers = rides.map((ride) => {
+      const rideObj = ride.toObject();
+      rideObj.acceptedHoppers = acceptedHoppersByRide[String(ride._id)] || [];
+      return rideObj;
+    });
+
     return res.status(200).json({
       summary: {
         totalUsers,
@@ -434,7 +506,7 @@ const getAdminOperationsOverview = async (_req, res) => {
       hoppers,
       sharers,
       pendingVehicleVerifications: pendingVehicleUsers,
-      rides,
+      rides: ridesWithAcceptedHoppers,
       matchmakingRequests
     });
   } catch (error) {
@@ -491,13 +563,145 @@ const reviewVehicleVerification = async (req, res) => {
   }
 };
 
+// @desc    Admin update any user
+// @route   PUT /api/users/admin/users/:userId
+// @access  Private/Admin
+const adminUpdateUser = async (req, res) => {
+  const { userId } = req.params;
+  const { name, email, studentId, contactNumber, role, isVerified } = req.body;
+
+  try {
+    const existingUser = await User.findById(userId);
+    if (!existingUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const updateSet = {};
+    const updateUnset = {};
+
+    if (name !== undefined) {
+      updateSet.name = String(name).trim();
+    }
+
+    if (email !== undefined) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const emailOwner = await User.findOne({
+        email: normalizedEmail,
+        _id: { $ne: existingUser._id }
+      });
+
+      if (emailOwner) {
+        return res.status(400).json({ message: 'User with this email already exists' });
+      }
+
+      updateSet.email = normalizedEmail;
+    }
+
+    if (studentId !== undefined) {
+      const normalizedStudentId = String(studentId).trim();
+
+      if (normalizedStudentId) {
+        const studentOwner = await User.findOne({
+          studentId: normalizedStudentId,
+          _id: { $ne: existingUser._id }
+        });
+
+        if (studentOwner) {
+          return res.status(400).json({ message: 'User with this Student ID already exists' });
+        }
+
+        updateSet.studentId = normalizedStudentId;
+      } else {
+        updateUnset.studentId = 1;
+      }
+    }
+
+    if (contactNumber !== undefined) {
+      const normalizedContact = String(contactNumber).trim();
+      updateSet.contactNumber = normalizedContact;
+      updateSet.phone = normalizedContact;
+    }
+
+    if (role !== undefined) {
+      let normalizedRole = String(role).trim().toLowerCase();
+      if (normalizedRole === 'sharer') normalizedRole = 'driver';
+      if (normalizedRole === 'hopper') normalizedRole = 'rider';
+      const allowedRoles = ['rider', 'driver', 'admin'];
+
+      if (!allowedRoles.includes(normalizedRole)) {
+        return res.status(400).json({ message: 'Invalid role value' });
+      }
+
+      updateSet.role = normalizedRole;
+    }
+
+    if (isVerified !== undefined) {
+      updateSet.isVerified = Boolean(isVerified);
+    }
+
+    const updateQuery = {};
+    if (Object.keys(updateSet).length > 0) {
+      updateQuery.$set = updateSet;
+    }
+    if (Object.keys(updateUnset).length > 0) {
+      updateQuery.$unset = updateUnset;
+    }
+
+    if (Object.keys(updateQuery).length === 0) {
+      return res.status(400).json({ message: 'No valid fields provided to update' });
+    }
+
+    await User.updateOne({ _id: existingUser._id }, updateQuery);
+
+    const updatedUser = await User.findById(existingUser._id).select('-password');
+    return res.status(200).json({
+      message: 'User updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Admin update user error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Admin delete any user
+// @route   DELETE /api/users/admin/users/:userId
+// @access  Private/Admin
+const adminDeleteUser = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    await User.deleteOne({ _id: targetUser._id });
+
+    return res.status(200).json({
+      message: 'User deleted successfully',
+      user: {
+        _id: targetUser._id,
+        name: targetUser.name,
+        email: targetUser.email
+      }
+    });
+  } catch (error) {
+    console.error('Admin delete user error:', error);
+    return res.status(500).json({ message: 'Server Error' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
+  loginAdmin,
   getMe,
   updateMe,
   verifyVehicle,
   registerAdmin,
   getAdminOperationsOverview,
-  reviewVehicleVerification
+  reviewVehicleVerification,
+  adminUpdateUser,
+  adminDeleteUser
 };
