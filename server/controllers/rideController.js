@@ -21,6 +21,35 @@ const deg2rad = (deg) => {
   return deg * (Math.PI / 180);
 };
 
+const parse12HourTime = (timeValue) => {
+    const raw = String(timeValue || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{1,2})\s*(AM|PM)$/i);
+
+    if (!match) {
+        return null;
+    }
+
+    let hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const modifier = match[3].toUpperCase();
+
+    if (
+        !Number.isInteger(hours) ||
+        !Number.isInteger(minutes) ||
+        hours < 1 ||
+        hours > 12 ||
+        minutes < 0 ||
+        minutes > 59
+    ) {
+        return null;
+    }
+
+    if (hours === 12) hours = 0;
+    if (modifier === 'PM') hours += 12;
+
+    return { hours, minutes, seconds: 0 };
+};
+
 // Helper: Find minimum distance from point to polyline (simplified as min distance to any vertex)
 // Ideally this should project the point onto each segment, but vertex check is a fast approximation for dense polylines
 const minDistanceToPath = (pointLat, pointLng, pathCoordinates) => {
@@ -120,7 +149,8 @@ const getRides = async (req, res) => {
        const pLng = parseFloat(pickupLng);
        const dLat = parseFloat(dropoffLat);
        const dLng = parseFloat(dropoffLng);
-       const MAX_DETOUR_KM = 3.5; 
+       const MAX_PICKUP_DETOUR_KM = 1.0; 
+       const MAX_DROPOFF_DETOUR_KM = 3.5; 
 
        console.log(`Filtering rides for Pickup: ${pLat}, ${pLng} | Dropoff: ${dLat}, ${dLng}`);
 
@@ -131,13 +161,13 @@ const getRides = async (req, res) => {
            }
 
            const pickupMatch = minDistanceToPath(pLat, pLng, ride.path.coordinates);
-           if (pickupMatch.dist > MAX_DETOUR_KM) {
+           if (pickupMatch.dist > MAX_PICKUP_DETOUR_KM) {
                console.log(`Ride ${ride._id} skipped: Pickup too far (${pickupMatch.dist.toFixed(2)}km)`);
                return false;
            }
 
            const dropoffMatch = minDistanceToPath(dLat, dLng, ride.path.coordinates);
-           if (dropoffMatch.dist > MAX_DETOUR_KM) {
+           if (dropoffMatch.dist > MAX_DROPOFF_DETOUR_KM) {
                console.log(`Ride ${ride._id} skipped: Dropoff too far (${dropoffMatch.dist.toFixed(2)}km)`);
                return false;
            }
@@ -189,27 +219,20 @@ const findPartners = async (req, res) => {
             return res.status(400).json({ message: 'Invalid pickup/dropoff coordinates' });
         }
 
-        const [timePart, modifier] = time.split(' ');
-        if (!timePart || !modifier) {
+        const parsedTime = parse12HourTime(time);
+        if (!parsedTime) {
             return res.status(400).json({ message: 'Time must be in format hh:mm AM/PM' });
         }
 
-        let [hours, minutes] = timePart.split(':').map(Number);
-        if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-            return res.status(400).json({ message: 'Invalid time value' });
-        }
-
-        if (hours === 12) hours = 0;
-        if (modifier === 'PM') hours += 12;
-
         const [year, month, day] = date.split('-').map(Number);
-        const requestedDateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        const requestedDateTime = new Date(year, month - 1, day, parsedTime.hours, parsedTime.minutes, parsedTime.seconds, 0);
         if (Number.isNaN(requestedDateTime.getTime())) {
             return res.status(400).json({ message: 'Invalid date value' });
         }
 
         const windowMinutes = Math.max(15, parseInt(timeWindowMin || '90', 10));
-        const thresholdKm = Math.max(1, parseFloat(locationThresholdKm || '3.5'));
+        const pickupThresholdKm = 1.0;
+        const dropoffThresholdKm = 3.5;
 
         const minTime = new Date(requestedDateTime.getTime() - windowMinutes * 60 * 1000);
         const maxTime = new Date(requestedDateTime.getTime() + windowMinutes * 60 * 1000);
@@ -233,7 +256,7 @@ const findPartners = async (req, res) => {
 
                 const pickupDistance = getDistance(pLat, pLng, pickupCoords[1], pickupCoords[0]);
                 const dropoffDistance = getDistance(dLat, dLng, destinationCoords[1], destinationCoords[0]);
-                const isNearby = pickupDistance <= thresholdKm && dropoffDistance <= thresholdKm;
+                const isNearby = pickupDistance <= pickupThresholdKm && dropoffDistance <= dropoffThresholdKm;
 
                 if (!isNearby) {
                     return null;
@@ -299,21 +322,13 @@ const createPartnerRequest = async (req, res) => {
         const normalizedDestinationLat = normalizeCoord(destinationLat);
         const normalizedDestinationLng = normalizeCoord(destinationLng);
 
-        const [timePart, modifier] = String(time).split(' ');
-        if (!timePart || !modifier) {
+        const parsedTime = parse12HourTime(time);
+        if (!parsedTime) {
             return res.status(400).json({ message: 'Time must be in format hh:mm AM/PM' });
         }
 
-        let [hours, minutes] = timePart.split(':').map(Number);
-        if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-            return res.status(400).json({ message: 'Invalid time value' });
-        }
-
-        if (hours === 12) hours = 0;
-        if (modifier === 'PM') hours += 12;
-
         const [year, month, day] = String(date).split('-').map(Number);
-        const requestedAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        const requestedAt = new Date(year, month - 1, day, parsedTime.hours, parsedTime.minutes, parsedTime.seconds, 0);
 
         if (Number.isNaN(requestedAt.getTime())) {
             return res.status(400).json({ message: 'Invalid date value' });
@@ -431,21 +446,13 @@ const updateMyPartnerRequest = async (req, res) => {
             const nextDate = date || request.requestedAt.toISOString().slice(0, 10);
             const nextTime = time || request.requestedTimeLabel;
 
-            const [timePart, modifier] = String(nextTime).split(' ');
-            if (!timePart || !modifier) {
+            const parsedTime = parse12HourTime(nextTime);
+            if (!parsedTime) {
                 return res.status(400).json({ message: 'Time must be in format hh:mm AM/PM' });
             }
 
-            let [hours, minutes] = timePart.split(':').map(Number);
-            if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-                return res.status(400).json({ message: 'Invalid time value' });
-            }
-
-            if (hours === 12) hours = 0;
-            if (modifier === 'PM') hours += 12;
-
             const [year, month, day] = String(nextDate).split('-').map(Number);
-            const requestedAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
+            const requestedAt = new Date(year, month - 1, day, parsedTime.hours, parsedTime.minutes, parsedTime.seconds, 0);
 
             if (Number.isNaN(requestedAt.getTime())) {
                 return res.status(400).json({ message: 'Invalid date value' });

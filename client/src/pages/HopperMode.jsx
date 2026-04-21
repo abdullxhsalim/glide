@@ -65,6 +65,16 @@ const HopperMode = () => {
     return `${year}-${month}-${day}`;
   });
   const [time, setTime] = useState('');
+  const [timeParts, setTimeParts] = useState({
+    hour: '',
+    minute: '',
+    period: 'AM'
+  });
+  const [requestTimeParts, setRequestTimeParts] = useState({
+    hour: '',
+    minute: '',
+    period: 'AM'
+  });
 
   const [rideMetrics, setRideMetrics] = useState({
     distanceKm: 0,
@@ -424,7 +434,7 @@ const HopperMode = () => {
       setPartnerOriginInput(request.pickupLocation || '');
       setPartnerDestInput(request.destinationLocation || '');
       setDate(requestedDate);
-      setTime(requestedTime);
+      setGlobalTimeFromLabel(requestedTime);
       setPartnerRequestConfirmed(true);
       setShowMyRequests(false);
 
@@ -574,7 +584,81 @@ const HopperMode = () => {
     hour = hour % 12;
     if (hour === 0) hour = 12;
 
-    return `${String(hour).padStart(2, '0')}:00 ${suffix}`;
+    return `${String(hour).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')} ${suffix}`;
+  };
+
+  const parseTimeLabelToParts = (label) => {
+    const match = String(label || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) {
+      return {
+        hour: '',
+        minute: '',
+        period: 'AM'
+      };
+    }
+
+    const rawHour = Number(match[1]);
+    const rawMinute = Number(match[2]);
+
+    if (
+      Number.isNaN(rawHour) ||
+      Number.isNaN(rawMinute) ||
+      rawHour < 1 ||
+      rawHour > 12 ||
+      rawMinute < 0 ||
+      rawMinute > 59
+    ) {
+      return {
+        hour: '',
+        minute: '',
+        period: 'AM'
+      };
+    }
+
+    return {
+      hour: String(rawHour).padStart(2, '0'),
+      minute: String(rawMinute).padStart(2, '0'),
+      period: match[3].toUpperCase()
+    };
+  };
+
+  const buildTimeLabelFromParts = (parts) => {
+    const hour = Number(parts.hour);
+    const minute = Number(parts.minute);
+
+    if (
+      Number.isNaN(hour) ||
+      Number.isNaN(minute) ||
+      hour < 1 ||
+      hour > 12 ||
+      minute < 0 ||
+      minute > 59
+    ) {
+      return '';
+    }
+
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${parts.period}`;
+  };
+
+  const setGlobalTimeFromLabel = (label) => {
+    setTime(label);
+    setTimeParts(parseTimeLabelToParts(label));
+  };
+
+  const handleTimePartChange = (field, value) => {
+    const next = { ...timeParts, [field]: value };
+    setTimeParts(next);
+    setTime(buildTimeLabelFromParts(next));
+    setPartnerRequestConfirmed(false);
+  };
+
+  const handleRequestTimePartChange = (field, value) => {
+    const next = { ...requestTimeParts, [field]: value };
+    setRequestTimeParts(next);
+    setRequestEditForm((prev) => ({
+      ...prev,
+      time: buildTimeLabelFromParts(next)
+    }));
   };
 
   const formatDateInput = (dateString) => {
@@ -594,6 +678,7 @@ const HopperMode = () => {
       date: formatDateInput(request.departureTime),
       time: request.timeLabel || ''
     });
+    setRequestTimeParts(parseTimeLabelToParts(request.timeLabel || ''));
   };
 
   const handleSaveMyRequest = async (requestId) => {
@@ -721,7 +806,7 @@ const HopperMode = () => {
         const mm = String(dt.getMonth() + 1).padStart(2, '0');
         const dd = String(dt.getDate()).padStart(2, '0');
         setDate(`${yyyy}-${mm}-${dd}`);
-        setTime(formatPartnerSearchTime(partner.departureTime));
+        setGlobalTimeFromLabel(formatPartnerSearchTime(partner.departureTime));
       }
     }
 
@@ -944,29 +1029,37 @@ const HopperMode = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-400 mb-2">Time (Optional)</label>
-                            <div className="relative">
-                            <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
-                            <select 
-                                value={time}
-                                onChange={(e) => setTime(e.target.value)}
-                                className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none transition-all"
-                            >
-                                <option value="">Any Time</option>
-                                <option>08:00 AM</option>
-                                <option>09:00 AM</option>
-                                <option>10:00 AM</option>
-                                <option>11:00 AM</option>
-                                <option>12:00 PM</option>
-                                <option>01:00 PM</option>
-                                <option>02:00 PM</option>
-                                <option>03:00 PM</option>
-                                <option>04:00 PM</option>
-                                <option>05:00 PM</option>
-                                <option>06:00 PM</option>
-                                <option>07:00 PM</option>
-                                <option>08:00 PM</option>
-                            </select>
-                            </div>
+                        <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" />
+                            <input
+                              type="number"
+                              min="1"
+                              max="12"
+                              placeholder="HH"
+                              value={timeParts.hour}
+                              onChange={(e) => handleTimePartChange('hour', e.target.value)}
+                              className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-10 pr-2 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                            />
+                          </div>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            placeholder="MM"
+                            value={timeParts.minute}
+                            onChange={(e) => handleTimePartChange('minute', e.target.value)}
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-2 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                          />
+                          <select
+                            value={timeParts.period}
+                            onChange={(e) => handleTimePartChange('period', e.target.value)}
+                            className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-2 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
                     </div>
                 </div>
 
@@ -1092,30 +1185,35 @@ const HopperMode = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Time</label>
-                <div className="relative">
-                  <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 z-10" />
+                <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 z-10" />
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      placeholder="HH"
+                      value={timeParts.hour}
+                      onChange={(e) => handleTimePartChange('hour', e.target.value)}
+                      className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-10 pr-2 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                    />
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    placeholder="MM"
+                    value={timeParts.minute}
+                    onChange={(e) => handleTimePartChange('minute', e.target.value)}
+                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-2 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+                  />
                   <select
-                    value={time}
-                    onChange={(e) => {
-                      setPartnerRequestConfirmed(false);
-                      setTime(e.target.value);
-                    }}
-                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl pl-12 pr-4 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5] appearance-none transition-all"
+                    value={timeParts.period}
+                    onChange={(e) => handleTimePartChange('period', e.target.value)}
+                    className="w-full h-[56px] bg-[#1E293B] border border-[#334155] rounded-xl px-2 text-white focus:outline-none focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
                   >
-                    <option value="">Select Time</option>
-                    <option>08:00 AM</option>
-                    <option>09:00 AM</option>
-                    <option>10:00 AM</option>
-                    <option>11:00 AM</option>
-                    <option>12:00 PM</option>
-                    <option>01:00 PM</option>
-                    <option>02:00 PM</option>
-                    <option>03:00 PM</option>
-                    <option>04:00 PM</option>
-                    <option>05:00 PM</option>
-                    <option>06:00 PM</option>
-                    <option>07:00 PM</option>
-                    <option>08:00 PM</option>
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
                   </select>
                 </div>
               </div>
@@ -1290,26 +1388,34 @@ const HopperMode = () => {
                                 onChange={(e) => setRequestEditForm((prev) => ({ ...prev, date: e.target.value }))}
                                 className="h-10 px-3 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
                               />
-                              <select
-                                value={requestEditForm.time}
-                                onChange={(e) => setRequestEditForm((prev) => ({ ...prev, time: e.target.value }))}
-                                className="h-10 px-3 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
-                              >
-                                <option value="">Select Time</option>
-                                <option>08:00 AM</option>
-                                <option>09:00 AM</option>
-                                <option>10:00 AM</option>
-                                <option>11:00 AM</option>
-                                <option>12:00 PM</option>
-                                <option>01:00 PM</option>
-                                <option>02:00 PM</option>
-                                <option>03:00 PM</option>
-                                <option>04:00 PM</option>
-                                <option>05:00 PM</option>
-                                <option>06:00 PM</option>
-                                <option>07:00 PM</option>
-                                <option>08:00 PM</option>
-                              </select>
+                              <div className="grid grid-cols-[1fr_1fr_1fr] gap-1">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="12"
+                                  placeholder="HH"
+                                  value={requestTimeParts.hour}
+                                  onChange={(e) => handleRequestTimePartChange('hour', e.target.value)}
+                                  className="h-10 px-2 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="59"
+                                  placeholder="MM"
+                                  value={requestTimeParts.minute}
+                                  onChange={(e) => handleRequestTimePartChange('minute', e.target.value)}
+                                  className="h-10 px-2 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                                />
+                                <select
+                                  value={requestTimeParts.period}
+                                  onChange={(e) => handleRequestTimePartChange('period', e.target.value)}
+                                  className="h-10 px-2 rounded-lg bg-[#1E293B] border border-[#334155] text-white text-sm"
+                                >
+                                  <option value="AM">AM</option>
+                                  <option value="PM">PM</option>
+                                </select>
+                              </div>
                             </div>
                             <div className="flex items-center gap-2 justify-end pt-1">
                               <button
