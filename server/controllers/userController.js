@@ -5,6 +5,42 @@ const Ride = require('../models/Ride');
 const Booking = require('../models/Booking');
 const PartnerRequest = require('../models/PartnerRequest');
 
+const getLastNDates = (days) => {
+  const dates = [];
+  const now = new Date();
+
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const date = new Date(now);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(now.getDate() - i);
+    dates.push(date);
+  }
+
+  return dates;
+};
+
+const toDayKey = (dateValue) => {
+  const date = new Date(dateValue);
+  return date.toISOString().slice(0, 10);
+};
+
+const buildDailySeries = (rawRows, days) => {
+  const dateMap = getLastNDates(days).reduce((acc, date) => {
+    const key = toDayKey(date);
+    acc[key] = 0;
+    return acc;
+  }, {});
+
+  rawRows.forEach((row) => {
+    const key = row._id;
+    if (Object.prototype.hasOwnProperty.call(dateMap, key)) {
+      dateMap[key] = row.count;
+    }
+  });
+
+  return Object.entries(dateMap).map(([date, count]) => ({ date, count }));
+};
+
 // Helper to generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', {
@@ -429,6 +465,13 @@ const registerAdmin = async (req, res) => {
 // @access  Private/Admin
 const getAdminOperationsOverview = async (_req, res) => {
   try {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 7);
+
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+
     const [
       totalUsers,
       totalHoppers,
@@ -436,11 +479,27 @@ const getAdminOperationsOverview = async (_req, res) => {
       pendingVehicleVerifications,
       totalRidePosts,
       totalMatchmakingRequests,
+      totalBookings,
+      acceptedBookings,
+      completedBookings,
+      cancelledBookings,
+      paidBookings,
       hoppers,
       sharers,
       pendingVehicleUsers,
       rides,
-      matchmakingRequests
+      matchmakingRequests,
+      bookingRevenueRows,
+      usersLast7DaysRaw,
+      ridesLast7DaysRaw,
+      bookingsLast7DaysRaw,
+      ridesByStatusRaw,
+      bookingsByStatusRaw,
+      topDriversRaw,
+      peakHoursRaw,
+      newUsersLast30Days,
+      newRidesLast30Days,
+      vehicleVerificationStats
     ] = await Promise.all([
       User.countDocuments({}),
       User.countDocuments({ role: { $in: ['rider', 'hopper'] } }),
@@ -448,6 +507,11 @@ const getAdminOperationsOverview = async (_req, res) => {
       User.countDocuments({ vehicleVerificationStatus: 'pending' }),
       Ride.countDocuments({}),
       PartnerRequest.countDocuments({}),
+      Booking.countDocuments({}),
+      Booking.countDocuments({ status: 'accepted' }),
+      Booking.countDocuments({ status: 'completed' }),
+      Booking.countDocuments({ status: 'cancelled' }),
+      Booking.countDocuments({ paymentStatus: 'paid' }),
       User.find({ role: { $in: ['rider', 'hopper'] } })
         .select('name email studentId role isVerified totalRides createdAt')
         .sort({ createdAt: -1 })
@@ -467,7 +531,141 @@ const getAdminOperationsOverview = async (_req, res) => {
       PartnerRequest.find({})
         .populate('requester', 'name email studentId')
         .sort({ requestedAt: -1 })
-        .limit(100)
+        .limit(100),
+      Booking.aggregate([
+        {
+          $match: {
+            status: { $in: ['accepted', 'completed'] },
+            paymentStatus: { $in: ['paid', 'unpaid'] }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            grossRevenue: { $sum: '$tripPrice' },
+            totalTrips: { $sum: 1 },
+            paidRevenue: {
+              $sum: {
+                $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$tripPrice', 0]
+              }
+            }
+          }
+        }
+      ]),
+      User.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      Ride.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      Booking.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      Ride.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      Booking.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      Ride.aggregate([
+        {
+          $group: {
+            _id: '$driver',
+            totalRidePosts: { $sum: 1 },
+            completedRides: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'completed'] }, 1, 0]
+              }
+            },
+            totalSeatsOffered: { $sum: '$seatsTotal' },
+            totalSeatsBooked: { $sum: '$seatsBooked' }
+          }
+        },
+        { $sort: { totalRidePosts: -1 } },
+        { $limit: 5 },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'driver'
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            totalRidePosts: 1,
+            completedRides: 1,
+            totalSeatsOffered: 1,
+            totalSeatsBooked: 1,
+            name: { $arrayElemAt: ['$driver.name', 0] },
+            email: { $arrayElemAt: ['$driver.email', 0] }
+          }
+        }
+      ]),
+      Ride.aggregate([
+        {
+          $group: {
+            _id: { $hour: '$departureTime' },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 6 }
+      ]),
+      User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+      Ride.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+      User.aggregate([
+        {
+          $match: {
+            role: 'driver',
+            vehicleVerificationStatus: { $in: ['pending', 'approved', 'rejected'] }
+          }
+        },
+        {
+          $group: {
+            _id: '$vehicleVerificationStatus',
+            count: { $sum: 1 }
+          }
+        }
+      ])
     ]);
 
     const rideIds = rides.map((ride) => ride._id);
@@ -502,6 +700,54 @@ const getAdminOperationsOverview = async (_req, res) => {
       return rideObj;
     });
 
+    const bookingRevenue = bookingRevenueRows[0] || {
+      grossRevenue: 0,
+      totalTrips: 0,
+      paidRevenue: 0
+    };
+
+    const ridesByStatus = ridesByStatusRaw.reduce((acc, row) => {
+      acc[row._id || 'unknown'] = row.count;
+      return acc;
+    }, {});
+
+    const bookingsByStatus = bookingsByStatusRaw.reduce((acc, row) => {
+      acc[row._id || 'unknown'] = row.count;
+      return acc;
+    }, {});
+
+    const vehicleVerificationBreakdown = vehicleVerificationStats.reduce((acc, row) => {
+      acc[row._id || 'unknown'] = row.count;
+      return acc;
+    }, {
+      pending: 0,
+      approved: 0,
+      rejected: 0
+    });
+
+    const utilizationRate = totalRidePosts
+      ? Number(((acceptedBookings / totalRidePosts) * 100).toFixed(2))
+      : 0;
+
+    const bookingAcceptanceRate = totalBookings
+      ? Number((((acceptedBookings + completedBookings) / totalBookings) * 100).toFixed(2))
+      : 0;
+
+    const driverVerificationApprovalRate = (vehicleVerificationBreakdown.approved + vehicleVerificationBreakdown.rejected)
+      ? Number(
+          ((vehicleVerificationBreakdown.approved / (vehicleVerificationBreakdown.approved + vehicleVerificationBreakdown.rejected)) * 100).toFixed(2)
+        )
+      : 0;
+
+    const usersSeries = buildDailySeries(usersLast7DaysRaw, 7);
+    const ridesSeries = buildDailySeries(ridesLast7DaysRaw, 7);
+    const bookingsSeries = buildDailySeries(bookingsLast7DaysRaw, 7);
+
+    const peakHours = peakHoursRaw.map((item) => ({
+      hour: `${String(item._id).padStart(2, '0')}:00`,
+      count: item.count
+    }));
+
     return res.status(200).json({
       summary: {
         totalUsers,
@@ -509,7 +755,41 @@ const getAdminOperationsOverview = async (_req, res) => {
         totalSharers,
         pendingVehicleVerifications,
         totalRidePosts,
-        totalMatchmakingRequests
+        totalMatchmakingRequests,
+        totalBookings,
+        acceptedBookings,
+        completedBookings,
+        cancelledBookings,
+        paidBookings,
+        grossRevenue: Number(bookingRevenue.grossRevenue || 0),
+        paidRevenue: Number(bookingRevenue.paidRevenue || 0),
+        averageTripValue: bookingRevenue.totalTrips
+          ? Number((bookingRevenue.grossRevenue / bookingRevenue.totalTrips).toFixed(2))
+          : 0,
+        bookingAcceptanceRate,
+        utilizationRate,
+        newUsersLast30Days,
+        newRidesLast30Days,
+        driverVerificationApprovalRate
+      },
+      analytics: {
+        ridesByStatus,
+        bookingsByStatus,
+        vehicleVerificationBreakdown,
+        usersSeries,
+        ridesSeries,
+        bookingsSeries,
+        peakHours,
+        topDrivers: topDriversRaw.map((driver) => ({
+          _id: driver._id,
+          name: driver.name || 'Unknown',
+          email: driver.email || 'N/A',
+          totalRidePosts: driver.totalRidePosts || 0,
+          completedRides: driver.completedRides || 0,
+          seatFillRate: driver.totalSeatsOffered
+            ? Number(((driver.totalSeatsBooked / driver.totalSeatsOffered) * 100).toFixed(2))
+            : 0
+        }))
       },
       hoppers,
       sharers,
@@ -684,7 +964,7 @@ const adminDeleteUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    await User.deleteOne({ _id: targetUser._id });
+    targetUser.isVerified = false; targetUser.role = "rider"; /* Soft Delete */ await targetUser.save();
 
     return res.status(200).json({
       message: 'User deleted successfully',

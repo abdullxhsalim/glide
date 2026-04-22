@@ -503,7 +503,7 @@ const deleteMyPartnerRequest = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized to delete this request' });
         }
 
-        await request.deleteOne();
+        request.status = 'rejected'; /* Soft delete */ await request.save();
         res.json({ message: 'Partner request deleted successfully' });
     } catch (error) {
         console.error('Error deleting partner request:', error);
@@ -664,7 +664,7 @@ const deleteMyRide = async (req, res) => {
             return res.status(403).json({ message: 'Not authorized to delete this ride' });
         }
 
-        await ride.deleteOne();
+        ride.status = 'cancelled'; /* Soft delete */ await ride.save();
         res.json({ message: 'Ride deleted successfully' });
     } catch (error) {
         console.error('Error deleting ride:', error);

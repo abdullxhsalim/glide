@@ -20,6 +20,7 @@ app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/rides', require('./routes/rideRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/maps', require('./routes/mapRoutes'));
+app.use('/api/ai', require('./routes/aiRoutes'));
 
 // Ensure unknown API paths return JSON instead of Express HTML pages.
 app.use('/api', (req, res) => {

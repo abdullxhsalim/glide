@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import SharerMode from './SharerMode';
 import HopperMode from './HopperMode';
 import Footer from '../components/Footer';
+import AIChatWidget from '../components/AIChatWidget';
 import { Share2, Car, User, Phone, Save, X, Mail, Hash } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
@@ -388,6 +389,16 @@ const Dashboard = () => {
             </div>
          )}
       </div>
+
+      <AIChatWidget
+        endpoint="/api/ai/chat/user"
+        token={user?.token}
+        title={activeMode === 'sharer' ? 'Sharer Co-Pilot' : 'Hopper Co-Pilot'}
+        subtitle="I can help with ride posting, booking, safety tips, and feature walkthroughs."
+        placeholder={activeMode === 'sharer' ? 'Ask about posting or managing rides...' : 'Ask about finding rides or partners...'}
+        mode={activeMode}
+        accent="emerald"
+      />
 
       {showEditProfile && (
         <div className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4">
