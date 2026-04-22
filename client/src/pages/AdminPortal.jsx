@@ -464,11 +464,11 @@ const AdminPortal = () => {
                   ) : (
                     overview.matchmakingRequests.map((request) => (
                       <div key={request._id} className="rounded-xl border border-[#334155] bg-[#0F172A]/70 p-4">
-                        <p className="text-white font-semibold">Rider: {request.rider?.name || 'Unknown'} | Driver: {request.driver?.name || 'Unknown'}</p>
-                        <p className="text-sm text-[#94A3B8]">Pickup: {request.ride?.origin?.address || 'N/A'}</p>
-                        <p className="text-sm text-[#94A3B8]">Dropoff: {request.ride?.destination?.address || 'N/A'}</p>
-                        <p className="text-sm text-[#94A3B8]">Request Time: {formatDate(request.createdAt)}</p>
-                        <p className="text-sm text-[#94A3B8]">Seats: {request.seatsBooked} | Status: {request.status} | Price: {request.tripPrice}</p>
+                        <p className="text-white font-semibold">Requester: {request.requester?.name || 'Unknown'}</p>
+                        <p className="text-sm text-[#94A3B8]">Pickup: {request.pickup?.placeName || request.pickup?.address || 'N/A'}</p>
+                        <p className="text-sm text-[#94A3B8]">Dropoff: {request.destination?.placeName || request.destination?.address || 'N/A'}</p>
+                        <p className="text-sm text-[#94A3B8]">Request Time: {formatDate(request.requestedAt || request.createdAt)}</p>
+                        <p className="text-sm text-[#94A3B8]">Time Label: {request.requestedTimeLabel} | Status: {request.status}</p>
                       </div>
                     ))
                   )}

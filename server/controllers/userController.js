@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Ride = require('../models/Ride');
 const Booking = require('../models/Booking');
+const PartnerRequest = require('../models/PartnerRequest');
 
 // Helper to generate JWT
 const generateToken = (id) => {
@@ -446,7 +447,7 @@ const getAdminOperationsOverview = async (_req, res) => {
       User.countDocuments({ role: 'driver' }),
       User.countDocuments({ vehicleVerificationStatus: 'pending' }),
       Ride.countDocuments({}),
-      Booking.countDocuments({}),
+      PartnerRequest.countDocuments({}),
       User.find({ role: { $in: ['rider', 'hopper'] } })
         .select('name email studentId role isVerified totalRides createdAt')
         .sort({ createdAt: -1 })
@@ -463,11 +464,9 @@ const getAdminOperationsOverview = async (_req, res) => {
         .populate('driver', 'name email')
         .sort({ createdAt: -1 })
         .limit(100),
-      Booking.find({})
-        .populate('rider', 'name email')
-        .populate('driver', 'name email')
-        .populate('ride', 'origin destination')
-        .sort({ createdAt: -1 })
+      PartnerRequest.find({})
+        .populate('requester', 'name email studentId')
+        .sort({ requestedAt: -1 })
         .limit(100)
     ]);
 

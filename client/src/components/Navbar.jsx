@@ -77,12 +77,14 @@ const Navbar = () => {
 
                   {isProfileMenuOpen && (
                     <div className="absolute right-0 top-12 w-44 bg-[#1E293B] border border-[#334155] rounded-xl shadow-2xl overflow-hidden z-50">
-                      <button
-                        onClick={handleEditProfile}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-[#334155]"
-                      >
-                        Edit Profile
-                      </button>
+                      {user.role !== 'admin' && (
+                        <button
+                          onClick={handleEditProfile}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-[#334155]"
+                        >
+                          Edit Profile
+                        </button>
+                      )}
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-[#334155] flex items-center gap-2"
@@ -153,12 +155,14 @@ const Navbar = () => {
                   >
                     {user.role === 'admin' ? 'Admin Portal' : 'Dashboard'}
                   </Link>
-                  <button
-                    onClick={handleEditProfile}
-                    className="w-full text-left text-gray-300 hover:text-white hover:bg-[#334155] block px-3 py-2 rounded-md text-base font-medium"
-                  >
-                    Edit Profile
-                  </button>
+                  {user.role !== 'admin' && (
+                    <button
+                      onClick={handleEditProfile}
+                      className="w-full text-left text-gray-300 hover:text-white hover:bg-[#334155] block px-3 py-2 rounded-md text-base font-medium"
+                    >
+                      Edit Profile
+                    </button>
+                  )}
                   <button 
                     onClick={handleLogout}
                     className="w-full text-left text-gray-300 hover:text-white hover:bg-[#334155] block px-3 py-2 rounded-md text-base font-medium"
