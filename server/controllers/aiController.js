@@ -4,7 +4,7 @@ const Booking = require('../models/Booking');
 const PartnerRequest = require('../models/PartnerRequest');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama3-8b-8192';
+const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 
 const sanitizeMessages = (messages) => {
   if (!Array.isArray(messages)) return [];
@@ -70,7 +70,7 @@ const chatForUserSide = async (req, res) => {
       : 'The user is currently in Hopper mode and may ask about searching rides, booking seats, matching with partners, and trip preparation.';
 
     const systemPrompt = [
-      'You are Glide Assistant for university ride-sharing users.',
+      'You are pouchAI, an AI Assistant for university ride-sharing users.',
       'Be practical, concise, and safety-oriented.',
       'You can guide on ride search, sharing, booking flow, timing, etiquette, and platform features.',
       'Do not invent app actions that do not exist. If uncertain, say so and offer a safe next step.',

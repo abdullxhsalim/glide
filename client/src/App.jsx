@@ -16,23 +16,25 @@ function Layout() {
   const showFooter = location.pathname !== "/dash" && !isAdminPath;
 
   return (
-    <div className="min-h-screen bg-[#1E293B] text-[#F8FAFC] font-sans selection:bg-[#10B981] selection:text-[#1E293B] relative overflow-hidden flex flex-col">
+    <div className="h-screen bg-[#1E293B] text-[#F8FAFC] font-sans selection:bg-[#10B981] selection:text-[#1E293B] flex flex-col overflow-hidden">
       <Navbar />
-      <div className="flex-1">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/dash" element={<Dashboard />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/admin/portal" element={<AdminPortal />} />
-        </Routes>
-      </div>
-      {showFooter && (
-        <div className="relative z-10">
-          <Footer />
+      <div className="flex-1 flex flex-col relative w-full mt-[64px] overflow-y-auto overflow-x-hidden">
+        <div className="flex-1 flex flex-col w-full">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/dash" element={<Dashboard />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/portal" element={<AdminPortal />} />
+          </Routes>
         </div>
-      )}
+        {showFooter && (
+          <div className="relative z-10 flex-shrink-0 w-full">
+            <Footer />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

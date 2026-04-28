@@ -17,7 +17,7 @@ const Home = () => {
         <div className="absolute bottom-[-5%] left-[-10%] w-[600px] h-[600px] bg-[#4F46E5]/10 rounded-full blur-[120px]" />
       </div>
 
-      <main className="pt-24 pb-12 relative z-10">
+      <main className="pt-8 pb-12 relative z-10">
         {/* Hero Section */}
         <section className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto min-h-[85vh] flex flex-col lg:flex-row items-center justify-center gap-12 lg:gap-24">
           <div className="flex-1 text-center lg:text-left space-y-8">

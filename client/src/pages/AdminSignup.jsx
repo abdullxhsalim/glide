@@ -67,7 +67,7 @@ const AdminSignup = () => {
   };
 
   return (
-    <div className="min-h-screen pt-20 pb-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center relative z-10">
+    <div className="min-h-full py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center relative z-10 flex-1">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

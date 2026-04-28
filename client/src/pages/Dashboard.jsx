@@ -238,10 +238,10 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-[#1E293B] text-[#F8FAFC]">
+    <div className="h-[calc(100vh-64px)] min-h-[calc(100vh-64px)] overflow-hidden flex flex-col bg-[#1E293B] text-[#F8FAFC]">
       
       {/* Header Section (Fixed) */}
-      <div className="pt-24 pb-2 px-4 flex-shrink-0 z-40 bg-[#1E293B]">
+      <div className="pt-6 pb-2 px-4 flex-shrink-0 z-40 bg-[#1E293B]">
         {/* Welcome & Time Display */}
         <div className="text-center mb-4">
             <h1 className="text-2xl font-bold">
@@ -290,13 +290,10 @@ const Dashboard = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 relative overflow-hidden pb-0">
+      <div className="flex-1 flex flex-col relative w-full h-full overflow-hidden">
          {activeMode === 'hopper' ? (
-            <div className="h-full w-full overflow-y-auto custom-scrollbar flex flex-col">
-               <div className="flex-grow">
-                 <HopperMode />
-               </div>
-               <Footer />
+            <div className="flex-1 flex flex-col w-full h-full">
+               <HopperMode />
             </div>
          ) : showVerifyVehicle ? (
             <div className="h-full w-full overflow-y-auto custom-scrollbar flex flex-col">
@@ -393,7 +390,7 @@ const Dashboard = () => {
       <AIChatWidget
         endpoint="/api/ai/chat/user"
         token={user?.token}
-        title={activeMode === 'sharer' ? 'Sharer Co-Pilot' : 'Hopper Co-Pilot'}
+        title="pouchAI"
         subtitle="I can help with ride posting, booking, safety tips, and feature walkthroughs."
         placeholder={activeMode === 'sharer' ? 'Ask about posting or managing rides...' : 'Ask about finding rides or partners...'}
         mode={activeMode}
