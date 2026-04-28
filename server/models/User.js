@@ -58,6 +58,10 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
   vehicleVerificationStatus: {
     type: String,
     enum: ['not_submitted', 'pending', 'approved', 'rejected'],

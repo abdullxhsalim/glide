@@ -120,6 +120,9 @@ const loginUser = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (user && (await bcrypt.compare(password, user.password))) {
+      if (user.isActive === false) {
+        return res.status(403).json({ message: 'Your account has been disabled by an administrator.' });
+      }
       res.json({
         _id: user.id,
         name: user.name,
@@ -684,15 +687,13 @@ const adminDeleteUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    await User.deleteOne({ _id: targetUser._id });
+    // Soft delete: toggle isActive instead of deleting from db
+    targetUser.isActive = !targetUser.isActive;
+    await targetUser.save();
 
     return res.status(200).json({
-      message: 'User deleted successfully',
-      user: {
-        _id: targetUser._id,
-        name: targetUser.name,
-        email: targetUser.email
-      }
+      message: targetUser.isActive ? 'User enabled successfully' : 'User disabled successfully',
+      user: targetUser
     });
   } catch (error) {
     console.error('Admin delete user error:', error);
