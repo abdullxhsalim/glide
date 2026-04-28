@@ -10,12 +10,14 @@ const {
 	getAdminOperationsOverview,
 	reviewVehicleVerification,
 	adminUpdateUser,
-	adminDeleteUser
+	adminDeleteUser,
+        googleAuth
 } = require('../controllers/userController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/google', googleAuth);
 router.post('/admin/login', loginAdmin);
 router.get('/me', protect, getMe);
 router.put('/me', protect, updateMe);
