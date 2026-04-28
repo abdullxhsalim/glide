@@ -8,10 +8,12 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import AdminLogin from "./pages/AdminLogin";
 import AdminPortal from "./pages/AdminPortal";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import AIChatWidget from "./components/AIChatWidget";
 
 function Layout() {
   const location = useLocation();
+  const { user } = useAuth();
   const isAdminPath = location.pathname.startsWith("/admin");
   const showFooter = location.pathname !== "/dash" && !isAdminPath;
 
@@ -28,6 +30,7 @@ function Layout() {
           <Route path="/admin/portal" element={<AdminPortal />} />
         </Routes>
       </div>
+      {user && <AIChatWidget isAdmin={user?.role === "admin"} />}
       {showFooter && (
         <div className="relative z-10">
           <Footer />
