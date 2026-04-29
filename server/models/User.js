@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema({
   },
   contactNumber: {
     type: String,
-    required: function() { return this.role !== 'admin'; },
+    required: function() { return this.role !== 'admin' && !this.googleId; },
     trim: true,
     default: ''
   },
@@ -49,9 +49,15 @@ const userSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true
+  },
   password: {
     type: String,
-    required: true,
+    required: function () { return !this.googleId; },
     minlength: 6
   },
   isVerified: {

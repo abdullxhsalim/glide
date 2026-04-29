@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, ShieldCheck, CheckCircle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
@@ -47,6 +48,35 @@ const Login = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleGoogleSuccess = async (credentialResponse) => {
+        setError(null);
+        setLoading(true);
+        try {
+            const res = await fetch('/api/users/google-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credential: credentialResponse.credential })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.message || 'Google sign-in failed');
+            }
+
+            login(data);
+            navigate(data?.role === 'admin' ? '/admin/portal' : '/dash');
+        } catch (err) {
+            setError(err.message || 'Google sign-in failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGoogleError = () => {
+        setError('Google sign-in was unsuccessful. Please try again.');
     };
 
     return (
@@ -149,6 +179,25 @@ const Login = () => {
                         )}
                     </button>
                 </form>
+
+                <div className="mt-6 relative z-10">
+                    <div className="relative flex items-center justify-center mb-4">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-[#334155]"></div>
+                        </div>
+                        <div className="relative bg-[#1E293B] px-4 text-sm text-[#94A3B8]">or continue with</div>
+                    </div>
+                    <div className="flex justify-center">
+                        <GoogleLogin
+                            onSuccess={handleGoogleSuccess}
+                            onError={handleGoogleError}
+                            theme="filled_black"
+                            shape="rectangular"
+                            size="large"
+                            width="100%"
+                        />
+                    </div>
+                </div>
 
                 <div className="mt-8 pt-6 border-t border-[#334155] text-center w-full">
                     <p className="text-sm text-[#94A3B8]">

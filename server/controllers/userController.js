@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const Ride = require('../models/Ride');
 const Booking = require('../models/Booking');
@@ -701,9 +702,91 @@ const adminDeleteUser = async (req, res) => {
   }
 };
 
+// @desc    Authenticate (or register) a user via Google OAuth
+// @route   POST /api/users/google-login
+// @access  Public
+const googleLoginUser = async (req, res) => {
+  const { credential } = req.body;
+
+  if (!credential) {
+    return res.status(400).json({ message: 'Google credential is required' });
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    return res.status(500).json({ message: 'Google sign-in is not configured on the server.' });
+  }
+
+  try {
+    const client = new OAuth2Client(clientId);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: clientId
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name } = payload;
+
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+    if (user) {
+      if (user.isActive === false) {
+        return res.status(403).json({ message: 'Your account has been disabled by an administrator.' });
+      }
+
+      // Link googleId if the account was created without it
+      if (!user.googleId) {
+        user.googleId = googleId;
+        await user.save();
+      }
+
+      return res.json({
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        studentId: user.studentId,
+        contactNumber: getResolvedContactNumber(user),
+        role: user.role,
+        isVerified: user.isVerified,
+        vehicleVerificationStatus: user.vehicleVerificationStatus,
+        vehicleVerificationRequestedAt: user.vehicleVerificationRequestedAt,
+        vehicle: user.vehicle,
+        token: generateToken(user._id)
+      });
+    }
+
+    // New Google user — create a minimal record; they can complete their profile later
+    const newUser = await User.create({
+      name,
+      email,
+      googleId,
+      role: 'rider',
+      isVerified: false,
+      contactNumber: '',
+      phone: ''
+    });
+
+    return res.status(201).json({
+      _id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      studentId: newUser.studentId,
+      contactNumber: getResolvedContactNumber(newUser),
+      role: newUser.role,
+      isVerified: newUser.isVerified,
+      vehicleVerificationStatus: newUser.vehicleVerificationStatus,
+      token: generateToken(newUser._id)
+    });
+  } catch (error) {
+    console.error('Google Login Error:', error);
+    return res.status(401).json({ message: 'Invalid Google credential' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
+  googleLoginUser,
   loginAdmin,
   getMe,
   updateMe,
