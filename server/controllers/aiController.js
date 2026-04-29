@@ -4,10 +4,30 @@ const Ride = require('../models/Ride');
 const PartnerRequest = require('../models/PartnerRequest');
 const Booking = require('../models/Booking');
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groqClient = null;
+
+const getGroqClient = () => {
+  const apiKey = (process.env.GROQ_API_KEY || '').trim();
+  if (!apiKey) {
+    return null;
+  }
+
+  if (!groqClient) {
+    groqClient = new Groq({ apiKey });
+  }
+
+  return groqClient;
+};
 
 const generateCompletion = async (systemPrompt, userPrompt) => {
-  const chatCompletion = await groq.chat.completions.create({
+  const client = getGroqClient();
+  if (!client) {
+    const error = new Error('Missing GROQ_API_KEY');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const chatCompletion = await client.chat.completions.create({
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
@@ -47,7 +67,11 @@ Always be concise, professional, and actionable. Do not format responses with co
     return res.json({ reply: responseText });
   } catch (error) {
     console.error('Error in admin chat:', error);
-    return res.status(500).json({ error: 'Failed to communicate with pouchAI. Check Groq API Key.' });
+    const statusCode = error.statusCode || 500;
+    const message = error.statusCode === 503
+      ? 'AI service is not configured. Missing GROQ_API_KEY.'
+      : 'Failed to communicate with pouchAI. Check Groq API Key.';
+    return res.status(statusCode).json({ error: message });
   }
 };
 
@@ -82,7 +106,11 @@ Your goal is to provide tailored advice to this user to optimize their experienc
     return res.json({ reply: responseText });
   } catch (error) {
     console.error('Error in user chat:', error);
-    return res.status(500).json({ error: 'Failed to communicate with pouchAI. Check Groq API Key.' });
+    const statusCode = error.statusCode || 500;
+    const message = error.statusCode === 503
+      ? 'AI service is not configured. Missing GROQ_API_KEY.'
+      : 'Failed to communicate with pouchAI. Check Groq API Key.';
+    return res.status(statusCode).json({ error: message });
   }
 };
 
