@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { User, Mail, Lock, Key, Car, Hash, ArrowRight, ArrowLeft, CheckCircle, ShieldCheck, MapPin, Phone } from 'lucide-react';
@@ -31,6 +31,7 @@ const ProgressBar = ({ step, totalSteps }) => (
 const Signup = () => {
     const navigate = useNavigate();
     const { login } = useAuth();
+    const googleTokenClientRef = useRef(null);
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({
         name: '',
@@ -51,9 +52,79 @@ const Signup = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [googleReady, setGoogleReady] = useState(false);
+
+    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
     // Calculate total steps based on role
     const totalSteps = formData.role === 'driver' ? 4 : 3;
+
+    const extractStudentId = ({ name, email }) => {
+        const emailLocal = String(email || '').split('@')[0] || '';
+        const fromEmail = emailLocal.match(/\d+/g)?.join('') || '';
+        if (fromEmail) return fromEmail;
+
+        const fromName = String(name || '').match(/\d+/g)?.join('') || '';
+        return fromName;
+    };
+
+    useEffect(() => {
+        if (!googleClientId) return;
+        if (window.google?.accounts?.oauth2) {
+            setGoogleReady(true);
+            return;
+        }
+
+        const existingScript = document.querySelector('script[data-google-identity]');
+        if (existingScript) {
+            existingScript.addEventListener('load', () => setGoogleReady(true), { once: true });
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+        script.dataset.googleIdentity = 'true';
+        script.onload = () => setGoogleReady(true);
+        script.onerror = () => setGoogleReady(false);
+        document.head.appendChild(script);
+    }, [googleClientId]);
+
+    useEffect(() => {
+        if (!googleReady || !googleClientId || !window.google?.accounts?.oauth2) return;
+
+        googleTokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+            client_id: googleClientId,
+            scope: 'openid email profile',
+            callback: async (tokenResponse) => {
+                try {
+                    const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                        headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                    });
+
+                    if (!profileRes.ok) {
+                        throw new Error('Unable to fetch Google profile');
+                    }
+
+                    const profile = await profileRes.json();
+                    const name = profile.name || '';
+                    const email = profile.email || '';
+                    const studentId = extractStudentId({ name, email });
+
+                    setFormData(prev => ({
+                        ...prev,
+                        name: name || prev.name,
+                        email: email || prev.email,
+                        studentId: studentId || prev.studentId
+                    }));
+                    setError(null);
+                } catch (profileError) {
+                    setError(profileError.message || 'Unable to complete Google sign-in');
+                }
+            }
+        });
+    }, [googleClientId, googleReady]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -155,6 +226,21 @@ const Signup = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleGoogleSignup = () => {
+        if (!googleClientId) {
+            setError('Google sign-in is not configured. Missing VITE_GOOGLE_CLIENT_ID.');
+            return;
+        }
+
+        if (!googleTokenClientRef.current) {
+            setError('Google sign-in is not ready yet. Please try again in a moment.');
+            return;
+        }
+
+        setError(null);
+        googleTokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
     };
 
     return (
@@ -314,6 +400,27 @@ const Signup = () => {
                                             onChange={handleChange}
                                         />
                                     </div>
+                                </div>
+
+                                <div className="pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleGoogleSignup}
+                                        className="w-full px-6 py-3 rounded-xl border border-[#334155] bg-[#0F172A] text-white font-medium hover:border-[#10B981]/60 hover:bg-[#111C2D] transition-all flex items-center justify-center gap-3"
+                                    >
+                                        <svg className="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
+                                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.43 1.45 8.43 3.37l6.27-6.27C34.67 3.12 29.74 1 24 1 14.62 1 6.51 6.38 2.69 14.19l7.32 5.69C12 14.09 17.56 9.5 24 9.5z" />
+                                            <path fill="#34A853" d="M46.18 24.59c0-1.57-.14-3.09-.41-4.59H24v9.22h12.44c-.54 2.89-2.16 5.33-4.58 6.98l7.06 5.48C43.23 37.51 46.18 31.53 46.18 24.59z" />
+                                            <path fill="#FBBC05" d="M10.01 28.32c-.48-1.44-.76-2.97-.76-4.55s.28-3.11.76-4.55l-7.32-5.69C1.23 16.81.36 20.32.36 23.77s.87 6.96 2.33 10.24l7.32-5.69z" />
+                                            <path fill="#4285F4" d="M24 46c5.74 0 10.56-1.89 14.08-5.12l-7.06-5.48c-1.95 1.32-4.44 2.1-7.02 2.1-6.44 0-12-4.59-13.98-10.69l-7.32 5.69C6.51 41.62 14.62 46 24 46z" />
+                                        </svg>
+                                        Sign up with Google
+                                    </button>
+                                    {!googleClientId && (
+                                        <p className="mt-2 text-xs text-[#94A3B8]">
+                                            Add <span className="font-semibold">VITE_GOOGLE_CLIENT_ID</span> to enable Google sign-in.
+                                        </p>
+                                    )}
                                 </div>
                             </motion.div>
                         )}
