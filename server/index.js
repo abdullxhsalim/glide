@@ -5,6 +5,9 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const { ensureDefaultAdmin } = require('./utils/seedAdmin');
 
+// Singleton Pattern - Import database connection manager
+const dbConnection = require('./patterns/Singleton');
+
 const app = express();
 const PORT = process.env.PORT || 5001;
 //change of port
@@ -52,14 +55,21 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/glide'
 console.log('Using MongoDB URI:', MONGODB_URI);
 
 mongoose.connect(MONGODB_URI)
-  .then(async () => {
+  .then(async (conn) => {
     console.log('MongoDB connected successfully');
+    // Singleton Pattern - Track connection in singleton
+    dbConnection.setConnection(conn);
     await ensureDefaultAdmin();
   })
   .catch(err => {
     console.error('MongoDB connection error:', err);
     process.exit(1); // Exit process with failure
   });
+
+// Health check endpoint using Singleton
+app.get('/api/health', (req, res) => {
+  res.json(dbConnection.healthCheck());
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -10,6 +10,71 @@ export const FUEL_PRICES = {
   hybrid: 130 // Assume Octane base for hybrid
 };
 
+// Strategic Pattern - Pricing Strategies
+export class PricingStrategy {
+  calculate(ride) {
+    throw new Error('calculate must be implemented');
+  }
+}
+
+export class DistancePricingStrategy extends PricingStrategy {
+  constructor(baseRate = 2.0, perKmRate = 1.5) {
+    super();
+    this.baseRate = baseRate;
+    this.perKmRate = perKmRate;
+  }
+
+  calculate(ride) {
+    const distanceKm = ride.distance || 0;
+    return this.baseRate + (distanceKm * this.perKmRate);
+  }
+}
+
+export class TimePricingStrategy extends PricingStrategy {
+  constructor(baseRate = 3.0, perMinuteRate = 0.5) {
+    super();
+    this.baseRate = baseRate;
+    this.perMinuteRate = perMinuteRate;
+  }
+
+  calculate(ride) {
+    const durationMinutes = (ride.duration || 0) / 60;
+    return this.baseRate + (durationMinutes * this.perMinuteRate);
+  }
+}
+
+export class DynamicPricingStrategy extends PricingStrategy {
+  constructor(baseStrategy, surgeMultiplier = 1.0) {
+    super();
+    this.baseStrategy = baseStrategy;
+    this.surgeMultiplier = surgeMultiplier;
+  }
+
+  calculate(ride) {
+    const basePrice = this.baseStrategy.calculate(ride);
+    return basePrice * this.surgeMultiplier;
+  }
+
+  setSurge(multiplier) {
+    this.surgeMultiplier = multiplier;
+  }
+}
+
+// Context that uses strategies
+export class PricingContext {
+  constructor(strategy) {
+    this.strategy = strategy;
+  }
+
+  setStrategy(strategy) {
+    this.strategy = strategy;
+  }
+
+  calculatePrice(ride) {
+    return this.strategy.calculate(ride);
+  }
+}
+
 export const fetchFuelPrice = async (type) => {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));

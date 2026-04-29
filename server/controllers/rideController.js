@@ -2,6 +2,8 @@ const Ride = require('../models/Ride');
 const PartnerRequest = require('../models/PartnerRequest');
 const User = require('../models/User');
 const decodePolyline = require('../utils/polyline');
+// Builder Pattern - Import ride builder
+const { RideBuilder } = require('../patterns/Builder');
 
 // Helper: Calculate distance between two points (Haversine formula)
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -564,13 +566,25 @@ const createRide = async (req, res) => {
         };
         const mergedPreferences = { ...defaultPreferences, ...(preferences || {}) };
 
+        // Builder Pattern - Use RideBuilder for constructing complex ride objects
+        const rideBuilder = new RideBuilder();
+        const rideData = rideBuilder
+          .setOrigin(origin)
+          .setDestination(destination)
+          .setDepartureTime(departureTime)
+          .setSeats(seatsTotal)
+          .setTotalFuelCost(totalFuelCost)
+          .setDriver(req.user.id)
+          .setStatus('scheduled')
+          .build();
+
         const ride = await Ride.create({
-            driver: req.user.id, // Assumes auth middleware adds user to req
-            origin,
-            destination,
-            departureTime,
-            seatsTotal,
-            totalFuelCost,
+            driver: rideData.driver,
+            origin: rideData.origin,
+            destination: rideData.destination,
+            departureTime: rideData.departureTime,
+            seatsTotal: rideData.seatsTotal,
+            totalFuelCost: rideData.totalFuelCost,
             routeData: routeData || {},
             path: routePath.coordinates.length > 0 ? routePath : undefined, // Save GeoJSON path for spatial queries
             // Calculate a baseline price for sorting/display purposes (e.g. if car is full)

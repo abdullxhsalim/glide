@@ -1,5 +1,20 @@
 const Booking = require('../models/Booking');
 const Ride = require('../models/Ride');
+// Observer Pattern - Import booking observers
+const { 
+  bookingObserver, 
+  DriverNotificationObserver, 
+  AdminAnalyticsObserver,
+  NotificationObserver 
+} = require('../patterns/Observer');
+
+// Observer Pattern - Register observers on startup
+const observersRegistered = false;
+if (!observersRegistered) {
+  bookingObserver.subscribe(DriverNotificationObserver);
+  bookingObserver.subscribe(AdminAnalyticsObserver);
+  bookingObserver.subscribe(NotificationObserver);
+}
 
 // @desc    Hopper creates a booking request for a ride
 // @route   POST /api/bookings
@@ -79,6 +94,15 @@ const createBookingRequest = async (req, res) => {
     const populatedBooking = await Booking.findById(booking._id)
       .populate('ride', 'origin destination departureTime seatsTotal seatsBooked status')
       .populate('driver', 'name email');
+
+    // Observer Pattern - Notify observers of new booking
+    bookingObserver.notify({
+      type: 'BOOKING_CREATED',
+      bookingId: booking._id,
+      riderId: req.user.id,
+      driverId: ride.driver,
+      status: 'pending'
+    });
 
     res.status(201).json(populatedBooking);
   } catch (error) {
