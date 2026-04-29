@@ -59,13 +59,18 @@ const Signup = () => {
     // Calculate total steps based on role
     const totalSteps = formData.role === 'driver' ? 4 : 3;
 
-    const extractStudentId = ({ name, email }) => {
-        const emailLocal = String(email || '').split('@')[0] || '';
-        const fromEmail = emailLocal.match(/\d+/g)?.join('') || '';
-        if (fromEmail) return fromEmail;
+    const extractNameAndStudentId = ({ name, email }) => {
+        const rawName = String(name || '');
+        const digitsFromName = rawName.match(/\d+/g)?.join('') || '';
+        const cleanedName = rawName.replace(/\d+/g, '').replace(/\s{2,}/g, ' ').trim();
 
-        const fromName = String(name || '').match(/\d+/g)?.join('') || '';
-        return fromName;
+        if (digitsFromName) {
+            return { cleanedName, studentId: digitsFromName };
+        }
+
+        const emailLocal = String(email || '').split('@')[0] || '';
+        const digitsFromEmail = emailLocal.match(/\d+/g)?.join('') || '';
+        return { cleanedName, studentId: digitsFromEmail };
     };
 
     useEffect(() => {
@@ -110,11 +115,11 @@ const Signup = () => {
                     const profile = await profileRes.json();
                     const name = profile.name || '';
                     const email = profile.email || '';
-                    const studentId = extractStudentId({ name, email });
+                    const { cleanedName, studentId } = extractNameAndStudentId({ name, email });
 
                     setFormData(prev => ({
                         ...prev,
-                        name: name || prev.name,
+                        name: cleanedName || prev.name,
                         email: email || prev.email,
                         studentId: studentId || prev.studentId
                     }));
