@@ -13,10 +13,20 @@ if (!googleClientId) {
   )
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <GoogleOAuthProvider clientId={googleClientId || ''}>
+const root = ReactDOM.createRoot(document.getElementById('root'))
+
+if (googleClientId) {
+  root.render(
+    <React.StrictMode>
+      <GoogleOAuthProvider clientId={googleClientId}>
+        <App />
+      </GoogleOAuthProvider>
+    </React.StrictMode>
+  )
+} else {
+  root.render(
+    <React.StrictMode>
       <App />
-    </GoogleOAuthProvider>
-  </React.StrictMode>,
-)
+    </React.StrictMode>
+  )
+}

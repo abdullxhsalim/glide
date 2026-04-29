@@ -727,17 +727,22 @@ const googleLoginUser = async (req, res) => {
     const payload = ticket.getPayload();
     const { sub: googleId, email, name } = payload;
 
-    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+    // First, try to find by googleId (safe, no account-takeover risk)
+    let user = await User.findOne({ googleId });
+
+    if (!user) {
+      // Check if an email/password account already exists for this email
+      const existingEmailUser = await User.findOne({ email });
+      if (existingEmailUser) {
+        return res.status(409).json({
+          message: 'An account with this email already exists. Please sign in with your email and password.'
+        });
+      }
+    }
 
     if (user) {
       if (user.isActive === false) {
         return res.status(403).json({ message: 'Your account has been disabled by an administrator.' });
-      }
-
-      // Link googleId if the account was created without it
-      if (!user.googleId) {
-        user.googleId = googleId;
-        await user.save();
       }
 
       return res.json({
