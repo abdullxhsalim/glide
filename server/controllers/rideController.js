@@ -545,10 +545,16 @@ const createRide = async (req, res) => {
             return res.status(400).json({ message: 'Please fill in all required fields' });
         }
 
-        let routePath = { type: 'LineString', coordinates: [] };
+        let routePath = null;
         if (routeData && routeData.geometry) {
             try {
-                routePath.coordinates = decodePolyline(routeData.geometry);
+                const coordinates = decodePolyline(routeData.geometry);
+                if (coordinates && coordinates.length > 0) {
+                    routePath = { 
+                        type: 'LineString', 
+                        coordinates: coordinates 
+                    };
+                }
             } catch (err) {
                 console.warn('Failed to decode polyline:', err);
             }
@@ -578,7 +584,7 @@ const createRide = async (req, res) => {
           .setStatus('scheduled')
           .build();
 
-        const ride = await Ride.create({
+        const rideCreateData = {
             driver: rideData.driver,
             origin: rideData.origin,
             destination: rideData.destination,
@@ -586,12 +592,17 @@ const createRide = async (req, res) => {
             seatsTotal: rideData.seatsTotal,
             totalFuelCost: rideData.totalFuelCost,
             routeData: routeData || {},
-            path: routePath.coordinates.length > 0 ? routePath : undefined, // Save GeoJSON path for spatial queries
-            // Calculate a baseline price for sorting/display purposes (e.g. if car is full)
             pricePerSeat: Math.floor(totalFuelCost / (parseInt(seatsTotal) + 1)), 
             preferences: mergedPreferences,
             vehicle: vehicle || driver.vehicle // Use user's vehicle if not specified
-        });
+        };
+
+        // Only include path if we have valid coordinates
+        if (routePath) {
+            rideCreateData.path = routePath;
+        }
+
+        const ride = await Ride.create(rideCreateData);
 
         console.log('DEBUG: Ride created:', {
           originPlaceName: ride.origin?.placeName,

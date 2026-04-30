@@ -39,9 +39,15 @@ const rideSchema = new mongoose.Schema({
   },
   
   // Decoded path for geospatial queries (Is Near Route?)
+  // Only set if we have valid coordinates (don't set type without coordinates)
   path: {
-     type: { type: String, default: 'LineString' },
-     coordinates: { type: [[Number]], required: false } // Array of [lng, lat]
+     type: { 
+       type: String, 
+       enum: ['LineString']
+     },
+     coordinates: { 
+       type: [[Number]]
+     }
   },
 
   preferences: {
@@ -68,8 +74,8 @@ const rideSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
-// Index for Geospatial queries
-rideSchema.index({ 'path': '2dsphere' });
+// Index for Geospatial queries (sparse so documents without path don't cause validation errors)
+rideSchema.index({ 'path': '2dsphere' }, { sparse: true });
 
 // Index for Geospatial queries
 rideSchema.index({ 'origin.coordinates': '2dsphere' });
