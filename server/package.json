@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -17,6 +20,7 @@
     "mongoose": "^7.0.3"
   },
   "devDependencies": {
+    "jest": "^30.3.0",
     "nodemon": "^2.0.22"
   }
 }
